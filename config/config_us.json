@@ -1,0 +1,57 @@
+{
+  "data_dir": "data/BioSonix/abstract-model/target-and-sensitive/1/only-target-in-big/data",
+  "task": "target-and-sensitive",
+  "use_norm_data": true,
+  "experiment": "phantom_2_trial_4",
+  "opt_flow_type": "ws_20",
+  "surgery": "US-first-trial",
+  "listenersOffset": 1,
+
+  "model": "1D",
+  "geometry": {
+    "numLayers": 3,
+    "numNodesPerLayer" : [3,13,11],
+    "1D": {
+      "numNodes": 26,
+      "distance": 10.0,
+      "massesRadius": 3.0
+    },
+    "2D": {
+      "numNodes": 26,
+      "distance": 10,
+      "massesRadius": 3.0,
+      "dx": 3,
+      "dz": 1
+    },
+    "3D": {
+      "numNodes": 26,
+      "distance": 10,
+      "massesRadius": 3.0,
+      "dx": 3,
+      "dz": 3
+    }
+  },
+  "parameters": {
+      "US-first-trial": {
+        "K": [0.05, 1.4, 5.0],
+        "M": [10.0, 96.15, 96.15]
+      }
+  },
+  "sonification_set_up": {
+    "acoustic_scaling_factor": 1,
+    "contributing_pixels": ["soft1", "soft2","soft3", "interface1", "interface2","interface3", "hard1","hard2", "hard3"],
+    "stiffnessArray": [0,0,0,1,1,1,2,2,2],
+    "1D": {
+      "drivers": ["m_3","m_5","m_7","m_10","m_11","m_12", "m_14", "m_18","m_22"],
+      "listeners": ["m_4","m_6","m_9","m_13", "m_16", "m_20"]
+      },
+    "2D": {
+      "drivers": ["m_1_1_0", "m_1_13_0", "m_1_10_0", "m_1_20_0", "m_1_21_0", "m_1_24_0"],
+      "listeners": ["m_1_3_0", "m_1_14_0", "m_1_23_0", "m_1_24_0"]
+      },
+    "3D": {
+      "drivers": ["m_1_3_1", "m_1_5_1", "m_1_7_1", "m_1_10_1", "m_1_11_1", "m_1_12_1","m_1_14_1","m_1_18_1","m_1_22_1"],
+      "listeners": ["m_1_4_1", "m_1_6_1", "m_1_9_1","m_1_13_1","m_1_16_1","m_1_20_1"]
+      }
+    }
+}
