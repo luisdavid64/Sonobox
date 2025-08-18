@@ -1,40 +1,23 @@
 {
   "data_dir": "data/BioSonix/abstract-model/target-and-sensitive/1/only-target-in-big/data",
-  "use_norm_data": true,
-
+  "use_norm_data": false,
   "model": "1D",
   "geometry": {
     "numLayers": 3,
     "numNodesPerLayer" : [3,13,11],
-    "1D": {
-      "numNodes": 26,
-      "distance": 10.0,
-      "massesRadius": 3.0
-    },
-    "2D": {
-      "numNodes": 26,
-      "distance": 10,
-      "massesRadius": 3.0,
-      "dx": 3,
-      "dz": 1
-    },
-    "3D": {
-      "numNodes": 26,
-      "distance": 10,
-      "massesRadius": 3.0,
-      "dx": 3,
-      "dz": 3
-    }
+    "distance": 10.0,
+    "massesRadius": 3.0,
+    "dy": 26,    // This is numNodes
+    "dx": 3,
+    "dz": 3
   },
   "parameters": {
-      "US-first-trial": {
-        "K": [0.05, 1.4, 5.0],
-        "M": [10.0, 96.15, 96.15]
-      }
+      "K": [0.05, 1.4, 5.0],
+      "M": [10.0, 96.15, 96.15]
   },
   "sonification_set_up": {
     "acoustic_scaling_factor": 1,
-    "contributing_pixels": ["soft1", "soft2","soft3", "interface1", "interface2","interface3", "hard1","hard2", "hard3"],
+    "contributing_pixels": ["3", "5","7", "10", "11","12", "14","18", "22"],
     "stiffnessArray": [0,0,0,1,1,1,2,2,2],
     "1D": {
       "drivers": ["m_3","m_5","m_7","m_10","m_11","m_12", "m_14", "m_18","m_22"],

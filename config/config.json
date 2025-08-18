@@ -1,12 +1,6 @@
 {
   "data_dir": "data/BioSonix/abstract-model/target-and-sensitive/1/only-target-in-big/data",
-  "task": "target-and-sensitive",
-  "surgery": "US-first-trial",
-  "trajectory": "2",
-  "listenersOffset": 1,
   "use_norm_data": false,
-  "experiment": "to-sensitive",
-
   "model": "1D",
   "geometry": {
     "numLayers": 3,
