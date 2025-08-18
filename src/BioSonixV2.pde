@@ -3,7 +3,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import ddf.minim.analysis.FFT;
 // for msg reception
 import java.util.Arrays;
-
+import java.nio.file.*;
 import oscP5.*;
 import netP5.*;
 OscP5 oscP5;
@@ -37,7 +37,7 @@ PhysicsContext phys;
 PhyModel mdl;
 ModelRenderer renderer;
 miPhyAudioClient audioStreamHandler;
-ConfigManager config; // loading json config parameters
+Phy3DConfig config; // loading json config parameters
 phy3DModel model;
 
 // physical parameters
@@ -203,7 +203,7 @@ String getConfig() {
   
   // Fallback to default if not set
   if (conf_path == null) {
-    conf_path = "/Users/luisreyes/Sonify/BioSonix-V2/SoundModels/PhysModel/config/config.json";
+    conf_path = "/Users/luisreyes/Sonify/SonoBox/model_configs/config.json";
     println("No Config Found: Using " + conf_path);
 
   }
@@ -211,26 +211,25 @@ String getConfig() {
 }
 
 void createModelFromConfig() {
-  String modelType = config.getModelType(); // "1D", "2D", or "3D"
+  String modelType = config.modelDim; // "1D", "2D", or "3D"
   println("IMPLEMENTING A "+ modelType +" TOPOLOGY FOR THE SOUND MODEL");
-  String surgery = config.getSurgery();
-  int[] nPerLayer = config.getNumNodesPerLayerArray(modelType);
-  double[] nodeM = config.getMArray(modelType, surgery);
-  double[] nodeK = config.getKArray(modelType, surgery);
+  int[] nPerLayer = config.numNodesPerLayer; // number of nodes per layer
+  double[] nodeM = config.M;
+  double[] nodeK = config.K;
   int numNodes = Arrays.stream(nPerLayer).sum(); //Make sure it matches
 
   ArrayList<String> massSubsets = getMassSubsets(modelType);
 
   println("with n nodes in the first layer: "+ nPerLayer[0] +" in the second: "+nPerLayer[1]+" in the third: "+nPerLayer[2]);
 
-  float dist = config.getFloatGeometry(modelType, "distance");
-  float massesRadius = config.getFloatGeometry(modelType, "massesRadius");
+  float dist = config.dist;
+  float massesRadius = config.massRadius;
 
   // Generic dimensions for all model types
   int dimX = 1, dimZ = 1;
   if (!"1D".equals(modelType)) {
-    dimX = config.getIntGeometry(modelType, "dx");
-    dimZ = config.getIntGeometry(modelType, "dz");
+    dimX = config.dimX;
+    dimZ = config.dimZ;
   }
 
   model = new phy3DModel("BioSonix" + modelType, phys.getGlobalMedium());
@@ -243,8 +242,8 @@ void createModelFromConfig() {
   model.translate(0, -150, 0);
 
   MassIDAdapter nameAdapter = new MassIDAdapter();
-  ArrayList<String> driversList = nameAdapter.adapt(config.getDriverList(modelType), modelType);
-  ArrayList<String> listenerList = nameAdapter.adapt(config.getListenerList(modelType), modelType);
+  ArrayList<String> driversList = nameAdapter.adapt(config.driverNodes, modelType);
+  ArrayList<String> listenerList = nameAdapter.adapt(config.listenerNodes, modelType);
   drivers = model.addDrivers(driversList);
   listeners = model.addListeners(listenerList);
 
@@ -283,7 +282,8 @@ void setup() {
   // Physics and config
   String absPath = getConfig();
   println("Loading config from: " + absPath);
-  config = new ConfigManager(absPath);
+  var cfgBuilder = Phy3DConfig.fromProcessingJsonFile(Paths.get(absPath));
+  config = cfgBuilder.build();
   phys = new PhysicsContext(44100);
   phys.setGlobalFriction(friction);
 

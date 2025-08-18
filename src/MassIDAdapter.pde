@@ -1,6 +1,6 @@
+import java.util.List;
 import java.util.ArrayList;
 import processing.data.JSONArray;
-
 public class MassIDAdapter {
 
     public static final String ONEDTEMPLATE = "m_0_{}_0";
@@ -19,10 +19,11 @@ public class MassIDAdapter {
         return template;
     }
 
-    public ArrayList<String> adapt(String[] massNames, String modelType) {
+    public ArrayList<String> adapt(List<String> massNames, String modelType) {
+
         ArrayList<String> newNames = new ArrayList<String>();
-        for (int i = 0; i < massNames.length; i++) {
-            String curName = massNames[i];
+        for (int i = 0; i < massNames.size(); i++) {
+            String curName = massNames.get(i);
             switch (modelType) {
                 case "1D":
                     newNames.add(applyTemplate(curName, ONEDTEMPLATE));

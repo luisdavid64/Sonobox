@@ -43,13 +43,6 @@ public class phy3DModel extends PhyModel {
     }
   }
   
-  // vr 1D
-  //public void setGeometry(double d, int n) {
-  //  numNodes = n;
-  //  numInteractions = n + 1;
-  //  dist = d;
-  //}
-  
   public void setDim(int dx, int dy, int dz, int span) {
     m_dimX = dx;
     m_dimY = dy;

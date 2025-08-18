@@ -1,7 +1,7 @@
 {
   "data_dir": "data/BioSonix/abstract-model/target-and-sensitive/1/only-target-in-big/data",
   "use_norm_data": false,
-  "model": "1D",
+  "model": "3D",
   "geometry": {
     "numLayers": 3,
     "numNodesPerLayer" : [3,13,11],
@@ -44,7 +44,7 @@
       "listeners": ["m_1_3_0", "m_1_14_0", "m_1_23_0", "m_1_24_0"]
       },
     "3D": {
-      "drivers": ["m_1_3_1", "m_1_5_1", "m_1_7_1", "m_1_10_1", "m_1_11_1", "m_1_12_1","m_1_14_1","m_1_18_1","m_1_22_1"],
+      "drivers": ["m_1_3_", "m_1_5_1", "m_1_7_1", "m_1_10_1", "m_1_11_1", "m_1_12_1","m_1_14_1","m_1_18_1","m_1_22_1"],
       "listeners": ["m_1_4_1", "m_1_6_1", "m_1_9_1","m_1_13_1","m_1_16_1","m_1_20_1"]
       }
     }
