@@ -1,6 +1,7 @@
 package miPhysics.Engine;
 import java.util.*;
 import miPhysics.Engine.*;
+import java.util.ArrayList;
 
 
 public class phy3DModel extends PhyModel {
@@ -32,6 +33,7 @@ public class phy3DModel extends PhyModel {
   SECOND, 
   CHECKERED, 
   DILATED2,
+  DILATED3,
   // CUSTOM, 
   // CLIQUE, 
   }
@@ -41,6 +43,7 @@ public class phy3DModel extends PhyModel {
  private static final int[][] OFFSETS_SECOND = {{0,+1,+1},{+1,0,+1},{+1,+1,0},{+1,+1,+1}};
  private static final int[][] OFFSETS_CHECKERBOARD_EVEN = { {+1,+1,0}, {+1,0,+1}, {0,+1,+1} };
  private static final int[][] OFFSETS_DILATED2 = { {+2,0,0},{0,+2,0},{0,0,+2} };  // “skip” springs
+ private static final int[][] OFFSETS_DILATED3 = { {+3,0,0},{0,+3,0},{0,0,+3} };  // “skip” springs
 
 
  private EnumSet<Bound> bCond;
@@ -156,10 +159,14 @@ public class phy3DModel extends PhyModel {
       case DILATED2:
         generateDilated2WithFrame();
         System.out.println("phy3DModel: generating DILATED2 order interactions");
-        break;
-      default:
-        System.out.println("phy3DModel: generating CUSTOM order interactions"); //<>//
-    }
+        break; 
+      case DILATED3:
+        generateOffsetGrid(OFFSETS_DILATED3);
+        System.out.println("phy3DModel: generating DILATED3 order interactions");
+        break; 
+      default: 
+        System.out.println("phy3DModel: generating CUSTOM order interactions"); //<>// //<>//
+    } //<>//
     for (int i = 0; i < m_dimX; i++) { //<>//
       for (int j = 0; j < m_dimY; j++) {
         for (int k = 0; k < m_dimZ; k++) {
@@ -179,11 +186,11 @@ public class phy3DModel extends PhyModel {
     m_generated = true;
   }
 
-  public void addInteractions(int idx, int idy, int idz, int i, int j, int k, String masName1, int a, int b, int c) {
-    Vect3D X0, U1;
-    String masName2;
-    if ((idx<m_dimX) && (idy<m_dimY) && (idz<m_dimZ)) { //<>//
-      if ((idx>=0) && (idy>=0) && (idz>=0)) {
+  public void addInteractions(int idx, int idy, int idz, int i, int j, int k, String masName1, int a, int b, int c, int mult) {
+    Vect3D X0, U1; //<>//
+    String masName2; //<>//
+    if ((idx<m_dimX) && (idy<m_dimY) && (idz<m_dimZ)) { //<>// //<>//
+      if ((idx>=0) && (idy>=0) && (idz>=0)) { //<>//
         if (!((idx==i) && (idy==j) && (idz==k))) { //<>//
           U1 = new Vect3D(a, b, c);
           //if (j > m_dimY-3) 
@@ -192,9 +199,9 @@ public class phy3DModel extends PhyModel {
           masName2 = m_mLabel + "_" +(idx+"_"+idy+"_"+idz);
           String ln = m_iLabel + "_" + (idx+"_"+idy+"_"+idz) + "_" + (i+"_"+j+"_"+k);
           if ((j == m_dimY-2) || (j == 0)) {
-            addInteraction(ln, new Spring3D(d,stiffness), masName1, masName2);
+            addInteraction(ln, new Spring3D(mult * d,stiffness), masName1, masName2);
           } else {
-            addInteraction(ln, new Spring3D(d,stiffness), masName1, masName2);
+            addInteraction(ln, new Spring3D(mult * d,stiffness), masName1, masName2);
           }
         }
       } //<>//
@@ -334,7 +341,7 @@ public class phy3DModel extends PhyModel {
     return (i * m_dimY + j) * m_dimZ + k;
   }
 
-  private void addIfValid(int i2, int j2, int k2, int i, int j, int k, String masName1) {
+  private void addIfValid(int i2, int j2, int k2, int i, int j, int k, String masName1, int mult) {
       if (i2 < 0 || j2 < 0 || k2 < 0 || i2 >= m_dimX || j2 >= m_dimY || k2 >= m_dimZ) return;
       // forward-only guard
       if (lin(i2,j2,k2) <= lin(i,j,k)) return;
@@ -348,12 +355,13 @@ public class phy3DModel extends PhyModel {
       int fy = dy != 0 ? 1 : 0;
       int fz = dz != 0 ? 1 : 0;
 
-      addInteractions(i2, j2, k2, i, j, k, masName1, fx, fy, fz);
+      addInteractions(i2, j2, k2, i, j, k, masName1, fx, fy, fz, mult);
   }
 
   private void applyOffsetsAt(int i, int j, int k, String masName1, int[][] offsets) {
       for (int[] d : offsets) {
-          addIfValid(i + d[0], j + d[1], k + d[2], i, j, k, masName1);
+          int max = Math.max(d[0], Math.max(d[1], d[2]));
+          addIfValid(i + d[0], j + d[1], k + d[2], i, j, k, masName1, max);
       }
   }
 
@@ -406,7 +414,7 @@ private void generateDilated2WithFrame() {
         // 2) boundary wireframe (connectivity around the hull)
         if (isBoundary(i,j,k)) {
             applyOffsetsAt(i,j,k, name, OFFSETS_FIRST);
-      }
+        }
     }
   }
 }
