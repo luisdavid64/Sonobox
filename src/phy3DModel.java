@@ -28,8 +28,20 @@ public class phy3DModel extends PhyModel {
  private double m_dist = 1;
  private double m_l0 = 1;
  private MassIDAdapter m_mIDAdapter = new MassIDAdapter();
- public enum interactionType {FIRST, SECOND, CLIQUE, CUSTOM}
+ public enum interactionType {
+  FIRST, 
+  SECOND, 
+  CHECKERED, 
+  CLIQUE, 
+  CUSTOM, 
+  CHAIN, 
+  RING
+  }
+
  private interactionType m_iOrder = interactionType.FIRST;
+ private static final int[][] OFFSETS_FIRST = {{+1,0,0},{0,+1,0},{0,0,+1}};
+ private static final int[][] OFFSETS_SECOND = {{0,+1,+1},{+1,0,+1},{+1,+1,0},{+1,+1,+1}};
+ private static final int[][] OFFSETS_CHECKERBOARD_EVEN = { {+1,+1,0}, {+1,0,+1}, {0,+1,+1} };
 
  private EnumSet<Bound> bCond;
  
@@ -115,18 +127,10 @@ public class phy3DModel extends PhyModel {
           if (((i == 0) || (i == (m_dimX-1))) && ((j == 0) || (j == m_dimY-1)) && ((k == 0) || (k == m_dimZ-1))) {
             this.addMass(masName, new Ground3D(1., new Vect3D(X0)));
           } else {
-            //if (j == m_dimY - 2) {
-              //this.addMass(masName, new Mass3D(m_M2, m_size*3, X0));
-            //} else 
             {
               this.addMass(masName, new Mass3D(mass, massSize, X0));
             }
           }
-          /*if ((j==0) || (j==(m_dimY-1))){
-           this.addMass(masName, new Ground3D(m_size, new Vect3D(X0)));
-           } else {
-           this.addMass(masName, new Mass3D(m_M, m_size, X0));
-           }*/
         }
       }
     }
@@ -137,7 +141,24 @@ public class phy3DModel extends PhyModel {
     // add the springs to the model: length, stiffness, connected mats
     String masName1, masName2;
     int idx = 0, idy = 0, idz = 0;
-
+    switch(m_iOrder) {
+      case FIRST:
+        generateOffsetGrid(OFFSETS_FIRST);
+        break;
+      case SECOND:
+        generateOffsetGrid(OFFSETS_SECOND);
+        System.out.println("phy3DModel: generating SECOND order interactions");
+        break;
+      case CHECKERED:
+        generateCheckerboardWithFrame(); 
+        System.out.println("phy3DModel: generating CHECKERED order interactions");
+        break;
+      case CHAIN:
+        System.out.println("phy3DModel: generating CHAIN order interactions");
+        break;
+      default:
+        System.out.println("phy3DModel: generating CUSTOM order interactions");
+    }
     for (int i = 0; i < m_dimX; i++) {
       for (int j = 0; j < m_dimY; j++) {
         for (int k = 0; k < m_dimZ; k++) {
@@ -145,19 +166,11 @@ public class phy3DModel extends PhyModel {
           masName1 = m_mLabel + "_" +(i+"_"+j+"_"+k);
           
           if (m_iOrder == interactionType.FIRST || m_iOrder == interactionType.SECOND) {
-            // 1st order interactions
-            addInteractions(i+1, j, k, i, j, k, masName1, 1, 0, 0); // all interaction along X
-            addInteractions(i, j+1, k, i, j, k, masName1, 0, 1, 0); // all interaction along Y
-            addInteractions(i, j, k+1, i, j, k, masName1, 0, 0, 1); // all interaction along Z
-
+              applyOffsetsAt(i,j,k, masName1, OFFSETS_FIRST);
           }
           if (m_iOrder == interactionType.SECOND) {
-            addInteractions(i, j+1, k+1, i, j, k, masName1, 0, 1, 1); // diago in plane ZY
-            addInteractions(i+1, j, k+1, i, j, k, masName1, 1, 0, 1); // diago in plane ZX
-            addInteractions(i+1, j+1, k, i, j, k, masName1, 1, 1, 0); // diago in plane ZY
-            addInteractions(i+1, j+1, k+1, i, j, k, masName1, 1, 1, 1); // inner
+              applyOffsetsAt(i, j, k, masName1, OFFSETS_SECOND);
           }
-          
         }
       } //<>//
     }
@@ -314,6 +327,73 @@ public class phy3DModel extends PhyModel {
 
   public void setInteractionType(interactionType it) {
     this.m_iOrder = it;
+  }
+
+  private int lin(int i, int j, int k) {
+    return (i * m_dimY + j) * m_dimZ + k;
+  }
+
+  private void addIfValid(int i2, int j2, int k2, int i, int j, int k, String masName1) {
+      if (i2 < 0 || j2 < 0 || k2 < 0 || i2 >= m_dimX || j2 >= m_dimY || k2 >= m_dimZ) return;
+      // forward-only guard
+      if (lin(i2,j2,k2) <= lin(i,j,k)) return;
+
+      int dx = Integer.compare(i2, i);
+      int dy = Integer.compare(j2, j);
+      int dz = Integer.compare(k2, k);
+
+      // flags like you already use (1 if axis is involved)
+      int fx = dx != 0 ? 1 : 0;
+      int fy = dy != 0 ? 1 : 0;
+      int fz = dz != 0 ? 1 : 0;
+
+      addInteractions(i2, j2, k2, i, j, k, masName1, fx, fy, fz);
+  }
+
+  private void applyOffsetsAt(int i, int j, int k, String masName1, int[][] offsets) {
+      for (int[] d : offsets) {
+          addIfValid(i + d[0], j + d[1], k + d[2], i, j, k, masName1);
+      }
+  }
+
+  private void generateOffsetGrid(int[][] offsets) {
+    String masName1, masName2;
+    int idx = 0, idy = 0, idz = 0;
+    for (int i = 0; i < m_dimX; i++) {
+      for (int j = 0; j < m_dimY; j++) {
+        for (int k = 0; k < m_dimZ; k++) {
+
+          masName1 = m_mLabel + "_" +(i+"_"+j+"_"+k);
+          applyOffsetsAt(i,j,k, masName1, offsets);
+        }
+      } 
+    }
+  }
+
+  private boolean isBoundary(int i, int j, int k) {
+    return (i == 0 || j == 0 || k == 0 ||
+            i == m_dimX - 1 || j == m_dimY - 1 || k == m_dimZ - 1);
+  }
+
+  private void generateCheckerboardWithFrame() {
+    for (int i = 0; i < m_dimX; i++) {
+        for (int j = 0; j < m_dimY; j++) {
+            for (int k = 0; k < m_dimZ; k++) {
+
+                String masName1 = m_mLabel + "_" + i + "_" + j + "_" + k;
+
+                // 1) boundary wireframe (axis-aligned frame)
+                if (isBoundary(i, j, k)) {
+                    applyOffsetsAt(i, j, k, masName1, OFFSETS_FIRST);
+                }
+
+                // 2) interior + boundary diagonals on checkerboard-even cells
+                if (((i + j + k) & 1) == 0) {
+                    applyOffsetsAt(i, j, k, masName1, OFFSETS_CHECKERBOARD_EVEN);
+                }
+            }
+        }
+    }
   }
   
 }
