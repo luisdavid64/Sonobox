@@ -26,7 +26,8 @@ void keyPressed() {
 
   if (key == 's') {
     String base = "/Users/luisreyes/Sonify/SonoBox/model_configs/";
-    String name = config.name + "_x_" + config.dimX + "y_" + config.dimY + "z_" + config.dimZ + ".json";
+    String name = config.name 
+    + "_x_" + config.dimX + "y_" + config.dimY + "z_" + config.dimZ + "_inter_" + config.interactionType + ".json";
     config.writeProcessingJson(Paths.get(base + "/" + name));
     println("Saved current configuration to Processing JSON format.");
   }
