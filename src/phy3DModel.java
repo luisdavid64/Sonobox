@@ -1,7 +1,6 @@
 package miPhysics.Engine;
 import java.util.*;
 import miPhysics.Engine.*;
-import java.util.ArrayList;
 
 
 public class phy3DModel extends PhyModel {
@@ -32,16 +31,17 @@ public class phy3DModel extends PhyModel {
   FIRST, 
   SECOND, 
   CHECKERED, 
-  CLIQUE, 
-  CUSTOM, 
-  CHAIN, 
-  RING
+  DILATED2,
+  // CUSTOM, 
+  // CLIQUE, 
   }
 
  private interactionType m_iOrder = interactionType.FIRST;
  private static final int[][] OFFSETS_FIRST = {{+1,0,0},{0,+1,0},{0,0,+1}};
  private static final int[][] OFFSETS_SECOND = {{0,+1,+1},{+1,0,+1},{+1,+1,0},{+1,+1,+1}};
  private static final int[][] OFFSETS_CHECKERBOARD_EVEN = { {+1,+1,0}, {+1,0,+1}, {0,+1,+1} };
+ private static final int[][] OFFSETS_DILATED2 = { {+2,0,0},{0,+2,0},{0,0,+2} };  // “skip” springs
+
 
  private EnumSet<Bound> bCond;
  
@@ -153,13 +153,14 @@ public class phy3DModel extends PhyModel {
         generateCheckerboardWithFrame(); 
         System.out.println("phy3DModel: generating CHECKERED order interactions");
         break;
-      case CHAIN:
-        System.out.println("phy3DModel: generating CHAIN order interactions");
+      case DILATED2:
+        generateDilated2WithFrame();
+        System.out.println("phy3DModel: generating DILATED2 order interactions");
         break;
       default:
-        System.out.println("phy3DModel: generating CUSTOM order interactions");
+        System.out.println("phy3DModel: generating CUSTOM order interactions"); //<>//
     }
-    for (int i = 0; i < m_dimX; i++) {
+    for (int i = 0; i < m_dimX; i++) { //<>//
       for (int j = 0; j < m_dimY; j++) {
         for (int k = 0; k < m_dimZ; k++) {
 
@@ -181,9 +182,9 @@ public class phy3DModel extends PhyModel {
   public void addInteractions(int idx, int idy, int idz, int i, int j, int k, String masName1, int a, int b, int c) {
     Vect3D X0, U1;
     String masName2;
-    if ((idx<m_dimX) && (idy<m_dimY) && (idz<m_dimZ)) {
+    if ((idx<m_dimX) && (idy<m_dimY) && (idz<m_dimZ)) { //<>//
       if ((idx>=0) && (idy>=0) && (idz>=0)) {
-        if (!((idx==i) && (idy==j) && (idz==k))) {
+        if (!((idx==i) && (idy==j) && (idz==k))) { //<>//
           U1 = new Vect3D(a, b, c);
           //if (j > m_dimY-3) 
           //m_l0 = m_l0 * 0.5;
@@ -379,14 +380,11 @@ public class phy3DModel extends PhyModel {
     for (int i = 0; i < m_dimX; i++) {
         for (int j = 0; j < m_dimY; j++) {
             for (int k = 0; k < m_dimZ; k++) {
-
                 String masName1 = m_mLabel + "_" + i + "_" + j + "_" + k;
-
                 // 1) boundary wireframe (axis-aligned frame)
                 if (isBoundary(i, j, k)) {
                     applyOffsetsAt(i, j, k, masName1, OFFSETS_FIRST);
                 }
-
                 // 2) interior + boundary diagonals on checkerboard-even cells
                 if (((i + j + k) & 1) == 0) {
                     applyOffsetsAt(i, j, k, masName1, OFFSETS_CHECKERBOARD_EVEN);
@@ -395,5 +393,20 @@ public class phy3DModel extends PhyModel {
         }
     }
   }
-  
+
+private void generateDilated2WithFrame() {
+    for (int i=0;i<m_dimX;i++)
+    for (int j=0;j<m_dimY;j++)
+    for (int k=0;k<m_dimZ;k++) {
+        String name = m_mLabel + "_" + i + "_" + j + "_" + k;
+
+        // 1) sparse dilated interior links
+        applyOffsetsAt(i,j,k, name, OFFSETS_DILATED2);
+
+        // 2) boundary wireframe (connectivity around the hull)
+        if (isBoundary(i,j,k)) {
+            applyOffsetsAt(i,j,k, name, OFFSETS_FIRST);
+      }
+    }
+  }
 }
