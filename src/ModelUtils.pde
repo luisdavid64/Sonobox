@@ -206,8 +206,8 @@ void createModelFromConfig() {
   
 }
 
-ArrayList<String> shiftNodeName(ArrayList<String> nodeNames, String dim) {
-  ArrayList<String> shiftedNames = new ArrayList<String>(nodeNames.size());
+List<String> shiftNodeName(List<String> nodeNames, String dim) {
+  List<String> shiftedNames = new ArrayList<String>(nodeNames.size());
   for (String nodeName : nodeNames) {
     String[] parts = nodeName.split("_");
     if (parts.length != 4) {
