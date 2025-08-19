@@ -1,5 +1,7 @@
 {
-  "data_dir": "data/BioSonix/abstract-model/target-and-sensitive/1/only-target-in-big/data",
+  "data_dir_": "data/BioSonix/abstract-model/target-and-sensitive/1/only-target-in-big/data",
+  "surgery": "US-first-trial",
+  "trial": "US-first-trial",
   "use_norm_data": false,
   "model": "3D",
   "geometry": {
@@ -32,8 +34,8 @@
       }
   },
   "sonification_set_up": {
-    "acoustic_scaling_factor": 1,
-    "contributing_pixels": ["3", "5","7", "10", "11","12", "14","18", "22"],
+    "acoustic_scaling_factor": 3,
+    "contributing_pixels": ["3", "5","7", "10", "11","12", "14","18", "19"],
     "stiffnessArray": [0,0,0,1,1,1,2,2,2],
     "1D": {
       "drivers": ["m_3","m_5","m_7","m_10","m_11","m_12", "m_14", "m_18","m_22"],

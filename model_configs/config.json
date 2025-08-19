@@ -5,11 +5,12 @@
   "geometry": {
     "numLayers": 3,
     "numNodesPerLayer" : [3,13,11],
-    "distance": 10.0,
+    "distance": 10.0, // in mm
     "massesRadius": 3.0,
     "dy": 26,    // This is numNodes
     "dx": 1,
-    "dz": 1
+    "dz": 1,
+    "interactionType": "SECOND"
   },
   "parameters": {
       "K": [0.05, 1.4, 5.0],
