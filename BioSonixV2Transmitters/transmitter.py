@@ -72,8 +72,8 @@ def transmitter(config_path, input_path=None, mode="us"):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', default="/Users/luisreyes/Sonify/BioSonix-V2/SoundModels/PhysModel/config/config.json")           # positional argument
-    parser.add_argument('--input_path', default="/Users/luisreyes/Sonify/BioSonix-V2/data/BioSonix/abstract-model/target-and-sensitive/2/to-sensitive/data")           # positional argument
+    parser.add_argument('--config_path', default="/Users/luisreyes/Sonify/SonoBox/config/config.json")           # positional argument
+    parser.add_argument('--input_path', default="/Users/luisreyes/Sonify/BioSonix-V2/data/BioSonix/abstract-model/ordering/S-T-Br/1/data")           # positional argument
     parser.add_argument('--mode', choices=["fem", "us"], default="fem")           # positional argument
     args = parser.parse_args()
     transmitter(args.config_path, args.input_path, args.mode)
