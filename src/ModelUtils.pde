@@ -206,8 +206,8 @@ void createModelFromConfig() {
   
 }
 
-private List<String> shiftNodeNameOnX(List<String> nodeNames) {
-  List<String> shiftedNames = new ArrayList<>(nodeNames.size());
+ArrayList<String> shiftNodeName(ArrayList<String> nodeNames, String dim) {
+  ArrayList<String> shiftedNames = new ArrayList<String>(nodeNames.size());
   for (String nodeName : nodeNames) {
     String[] parts = nodeName.split("_");
     if (parts.length != 4) {
@@ -217,8 +217,15 @@ private List<String> shiftNodeNameOnX(List<String> nodeNames) {
     int i = Integer.parseInt(parts[1]);
     int j = Integer.parseInt(parts[2]);
     int k = Integer.parseInt(parts[3]);
-    int newI = (i + 1) % config.dimX;
-    shiftedNames.add("m" + "_" + newI + "_" + j + "_" + k);
+    if ("X".equals(dim)) {
+      int newI = (i + 1) % config.dimX;
+      shiftedNames.add("m_" + newI + "_" + j + "_" + k);
+    } else if ("Z".equals(dim)) {
+      int newK = (k + 1) % config.dimZ;
+      shiftedNames.add("m_" + i + "_" + j + "_" + newK);
+    } else {
+      shiftedNames.add(nodeName); // no shift if unknown dim
+    }
   }
   return shiftedNames;
 }

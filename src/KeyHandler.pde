@@ -7,6 +7,7 @@ boolean cPressed = false;
 boolean dPressed = false;
 
 import java.util.List;
+import java.util.ArrayList;
 
 void keyPressed() {
   if (Character.isDigit(key)) {
@@ -96,9 +97,10 @@ void checkModelChanges() {
       modelChanged = true;
       produceRenderedMessage(config.interactionType.name());
   }
-  if (dPressed) {
-    var newDrivers =  shiftNodeNameOnX(config.driverNodes);
-    var newListeners = shiftNodeNameOnX(config.listenerNodes);
+  if (dPressed && (xPressed || zPressed)) {
+    String axis = xPressed ? "X" : "Z";
+    var newDrivers = shiftNodeName(config.driverNodes, axis);
+    var newListeners = shiftNodeName(config.listenerNodes, axis);
     model.clearInOutLabels();
     config.driverNodes = newDrivers;
     config.listenerNodes = newListeners;
