@@ -19,6 +19,13 @@ void keyPressed() {
     renderer.toggleModuleNameDisplay();
   }
 
+  if (key == 's') {
+    String base = "/Users/luisreyes/Sonify/SonoBox/model_configs/";
+    String name = config.name + "_x_" + config.dimX + "y_" + config.dimY + "z_" + config.dimZ + ".json";
+    config.writeProcessingJson(Paths.get(base + "/" + name));
+    println("Saved current configuration to Processing JSON format.");
+  }
+
   if (key == 'y' || key == 'Y') yPressed = true;
   if (key == 'x' || key == 'X') xPressed = true;
   if (key == 'z' || key == 'Z') zPressed = true;

@@ -28,7 +28,7 @@ public class phy3DModel extends PhyModel {
  private double m_dist = 1;
  private double m_l0 = 1;
  private MassIDAdapter m_mIDAdapter = new MassIDAdapter();
- public enum interactionType {FIRST, SECOND, CLIQUE}
+ public enum interactionType {FIRST, SECOND, CLIQUE, CUSTOM}
  private interactionType m_iOrder = interactionType.FIRST;
 
  private EnumSet<Bound> bCond;
