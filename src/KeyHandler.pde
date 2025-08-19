@@ -105,7 +105,7 @@ void checkModelChanges() {
     config.driverNodes = newDrivers;
     config.listenerNodes = newListeners;
     modelChanged = true;
-    produceRenderedMessage("Shifted driver and listener nodes to the right.");
+    produceRenderedMessage("Shifted driver and listener nodes on " + axis + " axis.");
   }
       
   if (modelChanged) {
