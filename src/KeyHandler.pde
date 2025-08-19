@@ -72,7 +72,6 @@ void checkModelChanges() {
     modelChanged = true;
   }
   if (modelChanged) {
-    // checkDimensionality();
     checkDimValidity();
     resetModel();
   }
@@ -86,16 +85,4 @@ void checkDimValidity() {
         config.dimZ = Math.max(config.dimZ, 1);
         println("New dimensions: X=" + config.dimX + ", Y=" + config.dimY + ", Z=" + config.dimZ);
     }
-}
-
-
-// Lets keep it 3D for now
-void checkDimensionality() {
-  if (config.dimX > 1 && config.dimY > 1 && config.dimZ > 1) {
-    config.modelDim = "3D";
-  } else if (config.dimX > 1 && config.dimY > 1) {
-    config.modelDim = "2D";
-  } else {
-    config.modelDim = "1D";
-  }
 }
