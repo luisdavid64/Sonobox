@@ -28,6 +28,8 @@ public class phy3DModel extends PhyModel {
  private double m_dist = 1;
  private double m_l0 = 1;
  private MassIDAdapter m_mIDAdapter = new MassIDAdapter();
+ public enum interactionType {FIRST, SECOND, CLIQUE}
+ private interactionType m_iOrder = interactionType.FIRST;
 
  private EnumSet<Bound> bCond;
  
@@ -142,20 +144,20 @@ public class phy3DModel extends PhyModel {
 
           masName1 = m_mLabel + "_" +(i+"_"+j+"_"+k);
           
-          // 1st order interactions
-          addInteractions(i+1, j, k, i, j, k, masName1, 1, 0, 0); // all interaction along X
-          addInteractions(i, j+1, k, i, j, k, masName1, 0, 1, 0); // all interaction along Y
-          addInteractions(i, j, k+1, i, j, k, masName1, 0, 0, 1); // all interaction along Z
+          if (m_iOrder == interactionType.FIRST || m_iOrder == interactionType.SECOND) {
+            // 1st order interactions
+            addInteractions(i+1, j, k, i, j, k, masName1, 1, 0, 0); // all interaction along X
+            addInteractions(i, j+1, k, i, j, k, masName1, 0, 1, 0); // all interaction along Y
+            addInteractions(i, j, k+1, i, j, k, masName1, 0, 0, 1); // all interaction along Z
 
-          // 2nd order interactions
-          addInteractions(i, j+1, k+1, i, j, k, masName1, 0, 1, 1); // diago in plane ZY
-          addInteractions(i+1, j, k+1, i, j, k, masName1, 1, 0, 1); // diago in plane ZX
-          addInteractions(i+1, j+1, k, i, j, k, masName1, 1, 1, 0); // diago in plane ZY
-          addInteractions(i+1, j+1, k+1, i, j, k, masName1, 1, 1, 1); // inner
-
-          addInteractions(i, j, k, i+1, j+1, k+1, masName1, 1, 1, 1); // inutile
-          addInteractions(i, j, k, i+1, j+1, k, masName1, 1, 1, 0); // inutile
-          addInteractions(i, j, k, i+1, j, k+1, masName1, 1, 0, 1); // inutile
+          }
+          if (m_iOrder == interactionType.SECOND) {
+            addInteractions(i, j+1, k+1, i, j, k, masName1, 0, 1, 1); // diago in plane ZY
+            addInteractions(i+1, j, k+1, i, j, k, masName1, 1, 0, 1); // diago in plane ZX
+            addInteractions(i+1, j+1, k, i, j, k, masName1, 1, 1, 0); // diago in plane ZY
+            addInteractions(i+1, j+1, k+1, i, j, k, masName1, 1, 1, 1); // inner
+          }
+          
         }
       } //<>//
     }
