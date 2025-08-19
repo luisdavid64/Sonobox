@@ -311,5 +311,9 @@ public class phy3DModel extends PhyModel {
   public void setModelType(String modelType) {
     this.m_modelType = modelType;
   }
+
+  public void setInteractionType(interactionType it) {
+    this.m_iOrder = it;
+  }
   
 }

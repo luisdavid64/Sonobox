@@ -182,6 +182,7 @@ void createModelFromConfig() {
   model.setParams(nodeM[0], nodeK[0]);
   model.setMassRadius(massesRadius);
   model.setModelType(modelType);
+  model.setInteractionType(config.interactionType);
   model.generate();
   model.translate(0, -150, 0);
 

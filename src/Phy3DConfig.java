@@ -4,7 +4,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.*;
-import java.util.ArrayList;
+
 import com.google.gson.*;
 
 public class Phy3DConfig {
@@ -31,6 +31,8 @@ public class Phy3DConfig {
   public int acousticScalingFactor;
   public List<String> contributingPixels;
   public int[] stiffnessArray;
+  public phy3DModel.interactionType interactionType;
+
 
   private Phy3DConfig(Builder b) {
     this.name = b.name;
@@ -52,6 +54,7 @@ public class Phy3DConfig {
     this.acousticScalingFactor = b.acousticScalingFactor;
     this.contributingPixels = List.copyOf(b.contributingPixels);
     this.stiffnessArray = b.stiffnessArray != null ? b.stiffnessArray.clone() : new int[0];
+    this.interactionType = b.interactionType != null ? b.interactionType : phy3DModel.interactionType.FIRST;
   }
 
   public Builder toBuilder() {
@@ -73,7 +76,8 @@ public class Phy3DConfig {
         .M(M)
         .acousticScalingFactor(acousticScalingFactor)
         .contributingPixels(contributingPixels)
-        .stiffnessArray(stiffnessArray);
+        .stiffnessArray(stiffnessArray)
+        .interactionType(interactionType);
   }
 
   public static final class Builder {
@@ -96,6 +100,7 @@ public class Phy3DConfig {
     private int acousticScalingFactor = 1;
     private List<String> contributingPixels = new ArrayList<>();
     private int[] stiffnessArray = new int[0];
+    private phy3DModel.interactionType interactionType = phy3DModel.interactionType.FIRST;
 
     public Builder name(String n){ this.name=n; return this; }
     public Builder dims(int x,int y,int z){ this.dimX=x; this.dimY=y; this.dimZ=z; return this; }
@@ -117,6 +122,7 @@ public class Phy3DConfig {
     public Builder acousticScalingFactor(int v){ this.acousticScalingFactor=v; return this; }
     public Builder contributingPixels(Collection<String> a){ this.contributingPixels = new ArrayList<>(a); return this; }
     public Builder stiffnessArray(int[] a){ this.stiffnessArray = a!=null?a.clone():new int[0]; return this; }
+    public Builder interactionType(phy3DModel.interactionType t) { this.interactionType = t; return this; }
 
     public Phy3DConfig build(){ return new Phy3DConfig(this); }
   }
@@ -140,6 +146,10 @@ public class Phy3DConfig {
     if (g.has("numLayers")) b.numLayers(g.get("numLayers").getAsInt());
     if (g.has("numNodesPerLayer")) {
       b.numNodesPerLayer(arrayDInt(g.getAsJsonArray("numNodesPerLayer")));
+    }
+    if (g.has("interactionType")) {
+      String it = g.get("interactionType").getAsString();
+      b.interactionType(phy3DModel.interactionType.valueOf(it.toUpperCase()));
     }
 
     // parameters
@@ -191,6 +201,7 @@ public class Phy3DConfig {
     g.addProperty("dy", dimY);
     g.addProperty("dx", dimX);
     g.addProperty("dz", dimZ);
+    g.addProperty("interactionType", interactionType != null ? interactionType.name() : "FIRST");
     root.add("geometry", g);
 
     JsonObject par = new JsonObject();
@@ -207,6 +218,7 @@ public class Phy3DConfig {
     // drivers/listeners (top-level)
     root.add("drivers", toJsonArray(driverNodes));
     root.add("listeners", toJsonArray(listenerNodes));
+
 
     return root;
   }
