@@ -205,3 +205,20 @@ void createModelFromConfig() {
   phys.init();
   
 }
+
+private List<String> shiftNodeNameOnX(List<String> nodeNames) {
+  List<String> shiftedNames = new ArrayList<>(nodeNames.size());
+  for (String nodeName : nodeNames) {
+    String[] parts = nodeName.split("_");
+    if (parts.length != 4) {
+      shiftedNames.add(nodeName); // ignore unexpected names
+      continue;
+    }
+    int i = Integer.parseInt(parts[1]);
+    int j = Integer.parseInt(parts[2]);
+    int k = Integer.parseInt(parts[3]);
+    int newI = (i + 1) % config.dimX;
+    shiftedNames.add("m" + "_" + newI + "_" + j + "_" + k);
+  }
+  return shiftedNames;
+}

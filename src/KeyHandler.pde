@@ -4,6 +4,9 @@ boolean zPressed = false;
 boolean upPressed = false;
 boolean downPressed = false;
 boolean cPressed = false;
+boolean dPressed = false;
+
+import java.util.List;
 
 void keyPressed() {
   if (Character.isDigit(key)) {
@@ -28,6 +31,7 @@ void keyPressed() {
   }
 
   if (key == 'c' || key == 'C') cPressed = true;
+  if (key == 'd' || key == 'D') dPressed = true;
   if (key == 'y' || key == 'Y') yPressed = true;
   if (key == 'x' || key == 'X') xPressed = true;
   if (key == 'z' || key == 'Z') zPressed = true;
@@ -40,6 +44,7 @@ void keyPressed() {
 void keyReleased() {
   // combo tracking (optional)
   if (key == 'c' || key == 'C') cPressed = false;
+  if (key == 'd' || key == 'D') dPressed = false;
   if (key == 'y' || key == 'Y') yPressed = false;
   if (key == 'x' || key == 'X') xPressed = false;
   if (key == 'z' || key == 'Z') zPressed = false;
@@ -90,6 +95,15 @@ void checkModelChanges() {
       config.interactionType = vals[(config.interactionType.ordinal() + 1) % vals.length];
       modelChanged = true;
       produceRenderedMessage(config.interactionType.name());
+  }
+  if (dPressed) {
+    var newDrivers =  shiftNodeNameOnX(config.driverNodes);
+    var newListeners = shiftNodeNameOnX(config.listenerNodes);
+    model.clearInOutLabels();
+    config.driverNodes = newDrivers;
+    config.listenerNodes = newListeners;
+    modelChanged = true;
+    produceRenderedMessage("Shifted driver and listener nodes to the right.");
   }
       
   if (modelChanged) {

@@ -2,7 +2,6 @@ package miPhysics.Engine;
 
 import java.util.*;
 import miPhysics.Engine.*;
-import java.util.ArrayList;
 
 public class phy3DModel extends PhyModel {
   private boolean m_generated = false;
@@ -161,14 +160,14 @@ public class phy3DModel extends PhyModel {
         break;
       case DILATED2:
         generateDilated2WithFrame();
-        System.out.println("phy3DModel: generating DILATED2 order interactions"); // <>// //<>//
+        System.out.println("phy3DModel: generating DILATED2 order interactions"); // <>// //<>// //<>//
         break;
       case CLIQUE:
         generateCliques();
         System.out.println("phy3DModel: generating CLIQUE order interactions");
         break;
       default:
-        System.out.println("phy3DModel: generating CUSTOM order interactions"); // <>// //<>//
+        System.out.println("phy3DModel: generating CUSTOM order interactions"); // <>// //<>// //<>//
     } // <>//
     for (int i = 0; i < m_dimX; i++) { // <>//
       for (int j = 0; j < m_dimY; j++) {
@@ -180,12 +179,12 @@ public class phy3DModel extends PhyModel {
             applyOffsetsAt(i, j, k, masName1, OFFSETS_FIRST);
           }
           if (m_iOrder == interactionType.SECOND) {
-            applyOffsetsAt(i, j, k, masName1, OFFSETS_SECOND); // <>// //<>//
+            applyOffsetsAt(i, j, k, masName1, OFFSETS_SECOND); // <>// //<>// //<>//
           }
         }
       }
     }
-    // <>// //<>//
+    // <>// //<>// //<>//
     m_generated = true;
   }
 
@@ -194,7 +193,7 @@ public class phy3DModel extends PhyModel {
       int mult) {
     Vect3D X0, U1; // <>//
     String masName2; // <>//
-    if ((idx < m_dimX) && (idy < m_dimY) && (idz < m_dimZ)) { // <>// //<>//
+    if ((idx < m_dimX) && (idy < m_dimY) && (idz < m_dimZ)) { // <>// //<>// //<>//
       if ((idx >= 0) && (idy >= 0) && (idz >= 0)) { // <>//
         if (!((idx == i) && (idy == j) && (idz == k))) { // <>//
           U1 = new Vect3D(a, b, c);
@@ -514,5 +513,18 @@ public class phy3DModel extends PhyModel {
         }
       }
     }
+  }
+
+
+  public void clearInOutLabels() {
+    m_inOutLabels.clear();
+  }
+
+  private List<String> currentDriverNodes() {
+    ArrayList<String> nodes = new ArrayList<>();
+    for (Driver3D d : this.getDrivers()) {
+      nodes.add(d.getMat().getName());
+    }
+    return nodes;
   }
 }
