@@ -53,33 +53,43 @@ void checkModelChanges() {
   }
   if (xPressed && upPressed) {
     config.dimX += 1;
-    checkDimensionality();
     println("Increasing X dimension to: " + config.dimX);
     modelChanged = true;
   }
   if (xPressed && downPressed) {
     config.dimX -= 1;
-    checkDimensionality();
     println("Decreasing X dimension to: " + config.dimX);
     modelChanged = true;
   }
   if (zPressed && upPressed) {
     config.dimZ += 1;
-    checkDimensionality();
     println("Increasing Z dimension to: " + config.dimZ);
     modelChanged = true;
   }
   if (zPressed && downPressed) {
     config.dimZ -= 1;                  
-    checkDimensionality();
     println("Decreasing Z dimension to: " + config.dimZ);
     modelChanged = true;
   }
   if (modelChanged) {
+    // checkDimensionality();
+    checkDimValidity();
     resetModel();
   }
 }
 
+void checkDimValidity() {
+    if (config.dimX < 1 || config.dimY < 1 || config.dimZ < 1) {
+        println("Invalid dimensions detected. Resetting to minimum valid values.");
+        config.dimX = Math.max(config.dimX, 1);
+        config.dimY = Math.max(config.dimY, 1);
+        config.dimZ = Math.max(config.dimZ, 1);
+        println("New dimensions: X=" + config.dimX + ", Y=" + config.dimY + ", Z=" + config.dimZ);
+    }
+}
+
+
+// Lets keep it 3D for now
 void checkDimensionality() {
   if (config.dimX > 1 && config.dimY > 1 && config.dimZ > 1) {
     config.modelDim = "3D";
