@@ -148,6 +148,7 @@ void resetModel() {
     phys.clearModel();
     model = null;
   }
+  // We update the config and recreate the model
   createModelFromConfig();
 }
 

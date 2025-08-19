@@ -1,5 +1,8 @@
 boolean yPressed = false;
+boolean xPressed = false;
+boolean zPressed = false;
 boolean upPressed = false;
+boolean downPressed = false;
 
 void keyPressed() {
   // --- your original logic ---
@@ -17,7 +20,10 @@ void keyPressed() {
   }
 
   if (key == 'y' || key == 'Y') yPressed = true;
+  if (key == 'x' || key == 'X') xPressed = true;
+  if (key == 'z' || key == 'Z') zPressed = true;
   if (key == CODED && keyCode == UP) upPressed = true;
+  if (key == CODED && keyCode == DOWN) downPressed = true;
   checkModelChanges();
 
 }
@@ -25,13 +31,61 @@ void keyPressed() {
 void keyReleased() {
   // combo tracking (optional)
   if (key == 'y' || key == 'Y') yPressed = false;
+  if (key == 'x' || key == 'X') xPressed = false;
+  if (key == 'z' || key == 'Z') zPressed = false;
   if (key == CODED && keyCode == UP) upPressed = false;
+  if (key == CODED && keyCode == DOWN) downPressed = false;
 }
 
 void checkModelChanges() {
+  boolean modelChanged = false;
   if (yPressed && upPressed) {
-    println("Y + UP pressed: Resetting model");
+    config.dimY += 1;
+    config.numNodesPerLayer[0] += 1; // Assuming the second layer is Y
+    println("Increasing Y dimension to: " + config.dimY);
+    modelChanged = true;
+  }
+  if (yPressed && downPressed) {
+    config.dimY -= 1;
+    config.numNodesPerLayer[0] -= 1; // Assuming the second layer is Y
+    println("Decreasing Y dimension to: " + config.dimY);
+    modelChanged = true;
+  }
+  if (xPressed && upPressed) {
+    config.dimX += 1;
+    checkDimensionality();
+    println("Increasing X dimension to: " + config.dimX);
+    modelChanged = true;
+  }
+  if (xPressed && downPressed) {
+    config.dimX -= 1;
+    checkDimensionality();
+    println("Decreasing X dimension to: " + config.dimX);
+    modelChanged = true;
+  }
+  if (zPressed && upPressed) {
+    config.dimZ += 1;
+    checkDimensionality();
+    println("Increasing Z dimension to: " + config.dimZ);
+    modelChanged = true;
+  }
+  if (zPressed && downPressed) {
+    config.dimZ -= 1;                  
+    checkDimensionality();
+    println("Decreasing Z dimension to: " + config.dimZ);
+    modelChanged = true;
+  }
+  if (modelChanged) {
     resetModel();
-    upPressed = false;
+  }
+}
+
+void checkDimensionality() {
+  if (config.dimX > 1 && config.dimY > 1 && config.dimZ > 1) {
+    config.modelDim = "3D";
+  } else if (config.dimX > 1 && config.dimY > 1) {
+    config.modelDim = "2D";
+  } else {
+    config.modelDim = "1D";
   }
 }
