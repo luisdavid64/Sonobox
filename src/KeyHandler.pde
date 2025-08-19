@@ -3,6 +3,7 @@ boolean xPressed = false;
 boolean zPressed = false;
 boolean upPressed = false;
 boolean downPressed = false;
+boolean cPressed = false;
 
 void keyPressed() {
   // --- your original logic ---
@@ -18,6 +19,7 @@ void keyPressed() {
   if (key == 'i') {
     renderer.toggleModuleNameDisplay();
   }
+  
 
   if (key == 's') {
     String base = "/Users/luisreyes/Sonify/SonoBox/model_configs/";
@@ -26,6 +28,7 @@ void keyPressed() {
     println("Saved current configuration to Processing JSON format.");
   }
 
+  if (key == 'c' || key == 'C') cPressed = true;
   if (key == 'y' || key == 'Y') yPressed = true;
   if (key == 'x' || key == 'X') xPressed = true;
   if (key == 'z' || key == 'Z') zPressed = true;
@@ -37,6 +40,7 @@ void keyPressed() {
 
 void keyReleased() {
   // combo tracking (optional)
+  if (key == 'c' || key == 'C') cPressed = false;
   if (key == 'y' || key == 'Y') yPressed = false;
   if (key == 'x' || key == 'X') xPressed = false;
   if (key == 'z' || key == 'Z') zPressed = false;
@@ -80,6 +84,13 @@ void checkModelChanges() {
     println("Decreasing Z dimension to: " + config.dimZ);
     modelChanged = true;
   }
+  
+  if (cPressed) {
+      
+      phy3DModel.interactionType[] vals = phy3DModel.interactionType.values();
+      config.interactionType = vals[(config.interactionType.ordinal() + 1) % vals.length];}
+      modelChanged = true;
+      println("Switching to interaction type: " + config.interactionType);
   if (modelChanged) {
     checkDimValidity();
     resetModel();
