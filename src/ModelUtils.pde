@@ -154,6 +154,7 @@ void resetModel() {
 }
 
 void createModelFromConfig() {
+  initBaseline(config.numNodesPerLayer);
   String modelType = config.modelDim; // "1D", "2D", or "3D"
   println("IMPLEMENTING A "+ modelType +" TOPOLOGY FOR THE SOUND MODEL");
   int[] nPerLayer = config.numNodesPerLayer; // number of nodes per layer

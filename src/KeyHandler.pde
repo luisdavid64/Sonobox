@@ -40,19 +40,18 @@ void keyReleased() {
 void checkModelChanges() {
   boolean modelChanged = false;
   if (yPressed && upPressed) {
-    int newY = config.dimY + 1;
-    config.numNodesPerLayer = redistributeProportionally(newY, config.numNodesPerLayer);
-    config.dimY = newY;
-    println("Increasing Y dimension to: " + config.dimY);
+    int i = pickForIncrement(config.numNodesPerLayer, baselineW);
+    config.numNodesPerLayer[i] += 1;
+    config.dimY += 1;
     modelChanged = true;
   }
   if (yPressed && downPressed) {
-    int newY = Math.max(config.numNodesPerLayer.length, config.dimY - 1); // keep ≥1 per layer
-    config.numNodesPerLayer = redistributeProportionally(newY, config.numNodesPerLayer);
-    config.dimY = newY;
-    config.numNodesPerLayer[0] -= 1; // Assuming the second layer is Y
-    println("Decreasing Y dimension to: " + config.dimY);
-    modelChanged = true;
+    int i = pickForDecrement(config.numNodesPerLayer, baselineW);
+    if (i != -1) {
+      config.numNodesPerLayer[i] -= 1;
+      config.dimY -= 1;
+      modelChanged = true;
+    } 
   }
   if (xPressed && upPressed) {
     config.dimX += 1;
