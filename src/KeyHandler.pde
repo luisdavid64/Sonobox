@@ -6,7 +6,6 @@ boolean downPressed = false;
 boolean cPressed = false;
 
 void keyPressed() {
-  // --- your original logic ---
   if (Character.isDigit(key)) {
     int index = Character.getNumericValue(key) - 1;
     if (index >= 0 && index < drivers.size()) {
@@ -88,9 +87,11 @@ void checkModelChanges() {
   if (cPressed) {
       
       phy3DModel.interactionType[] vals = phy3DModel.interactionType.values();
-      config.interactionType = vals[(config.interactionType.ordinal() + 1) % vals.length];}
+      config.interactionType = vals[(config.interactionType.ordinal() + 1) % vals.length];
       modelChanged = true;
-      println("Switching to interaction type: " + config.interactionType);
+      produceRenderedMessage(config.interactionType.name());
+  }
+      
   if (modelChanged) {
     checkDimValidity();
     resetModel();

@@ -34,3 +34,9 @@ int pickForDecrement(int[] layers, double[] w) {
   }
   return best; // -1 means can't decrement without breaking min=1
 }
+
+void produceRenderedMessage(String msg) {
+  triggerText = msg;
+  showText = true;  // Enable the text to be displayed
+  textTimer = millis();  // Reset the timer
+}
