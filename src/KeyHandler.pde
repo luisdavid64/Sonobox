@@ -40,13 +40,16 @@ void keyReleased() {
 void checkModelChanges() {
   boolean modelChanged = false;
   if (yPressed && upPressed) {
-    config.dimY += 1;
-    config.numNodesPerLayer[0] += 1; // Assuming the second layer is Y
+    int newY = config.dimY + 1;
+    config.numNodesPerLayer = redistributeProportionally(newY, config.numNodesPerLayer);
+    config.dimY = newY;
     println("Increasing Y dimension to: " + config.dimY);
     modelChanged = true;
   }
   if (yPressed && downPressed) {
-    config.dimY -= 1;
+    int newY = Math.max(config.numNodesPerLayer.length, config.dimY - 1); // keep ≥1 per layer
+    config.numNodesPerLayer = redistributeProportionally(newY, config.numNodesPerLayer);
+    config.dimY = newY;
     config.numNodesPerLayer[0] -= 1; // Assuming the second layer is Y
     println("Decreasing Y dimension to: " + config.dimY);
     modelChanged = true;
