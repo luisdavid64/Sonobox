@@ -233,19 +233,16 @@ void createModelFromConfig() {
   }
 
   model = new phy3DModel("BioSonix" + modelType, phys.getGlobalMedium());
-
   model.setDim(dimX, numNodes, dimZ, 1);
   model.setGeometry(dist);
   model.setParams(nodeM[0], nodeK[0]);
   model.setMassRadius(massesRadius);
+  model.setModelType(modelType);
   model.generate();
   model.translate(0, -150, 0);
 
-  MassIDAdapter nameAdapter = new MassIDAdapter();
-  ArrayList<String> driversList = nameAdapter.adapt(config.driverNodes, modelType);
-  ArrayList<String> listenerList = nameAdapter.adapt(config.listenerNodes, modelType);
-  drivers = model.addDrivers(driversList);
-  listeners = model.addListeners(listenerList);
+  drivers = model.addDrivers(config.driverNodes);
+  listeners = model.addListeners(config.listenerNodes);
 
   tissueNodeNames = new ArrayList<String>();
   tissueNodeNames.add("m_0_0_0");

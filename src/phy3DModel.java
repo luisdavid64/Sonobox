@@ -15,6 +15,7 @@ public class phy3DModel extends PhyModel {
  private int m_dimY = 1;
  private int m_dimZ = 1;
  private int m_neighbors = 1;
+ private String m_modelType = "3D";
  
  //private int excitedNode = 0;
  private String m_mLabel = "m";
@@ -26,6 +27,7 @@ public class phy3DModel extends PhyModel {
  //private double dist = 62;
  private double m_dist = 1;
  private double m_l0 = 1;
+ private MassIDAdapter m_mIDAdapter = new MassIDAdapter();
 
  private EnumSet<Bound> bCond;
  
@@ -64,7 +66,8 @@ public class phy3DModel extends PhyModel {
     stiffness = K;
   }
   
- public ArrayList<Driver3D> addDrivers (ArrayList<String> InNodes) {
+ public ArrayList<Driver3D> addDrivers (List<String> InNodes) {
+  InNodes = m_mIDAdapter.adapt(InNodes, m_modelType);
   ArrayList<Driver3D> drivers = new ArrayList<>(); // Initialize the drivers list
   int count = 1;
   for (String drvNode : InNodes) {
@@ -77,7 +80,8 @@ public class phy3DModel extends PhyModel {
     return drivers; // Return the drivers list
   }
   
-  public ArrayList<Observer3D> addListeners(ArrayList<String> OutNodes) {
+  public ArrayList<Observer3D> addListeners(List<String> OutNodes) {
+    OutNodes = m_mIDAdapter.adapt(OutNodes, m_modelType);
     ArrayList<Observer3D> listeners = new ArrayList<>(); // Initialize the listeners list
     int count = 1;
     for (String obsNode : OutNodes) {
@@ -300,6 +304,10 @@ public class phy3DModel extends PhyModel {
       System.out.println("No " + p + " parameter found in " + this);
       return 0.;
     }
+  }
+
+  public void setModelType(String modelType) {
+    this.m_modelType = modelType;
   }
   
 }
