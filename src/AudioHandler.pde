@@ -27,3 +27,11 @@ public void setAudioClient() {
     out = minim.getLineOut(Minim.MONO);
   }
 }
+
+public void resetAudioClient() {
+  if (audioStreamHandler != null) {
+    audioStreamHandler.shutdown();
+    audioStreamHandler = null;
+  }
+  setAudioClient();
+}
