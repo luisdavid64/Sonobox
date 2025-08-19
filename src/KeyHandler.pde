@@ -29,7 +29,6 @@ void keyReleased() {
 }
 
 void checkModelChanges() {
-    println("Checking model changes...");
   if (yPressed && upPressed) {
     println("Y + UP pressed: Resetting model");
     resetModel();

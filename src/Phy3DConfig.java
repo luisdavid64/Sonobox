@@ -7,30 +7,30 @@ import java.util.stream.*;
 import java.util.ArrayList;
 import com.google.gson.*;
 
-public final class Phy3DConfig {
+public class Phy3DConfig {
   // ---- Engine core knobs ----
-  public final String name;
-  public final int dimX, dimY, dimZ;
-  public final int neighborSpan;
-  public final float dist;
-  public final float massRadius;
-  public final EnumSet<Bound> bounds;
+  public String name;
+  public int dimX, dimY, dimZ;
+  public int neighborSpan;
+  public float dist;
+  public float massRadius;
+  public EnumSet<Bound> bounds;
 
   // IO (engine-ready lists)
-  public final List<String> driverNodes;
-  public final List<String> listenerNodes;
+  public List<String> driverNodes;
+  public List<String> listenerNodes;
 
   // ---- Processing schema extras ----
-  public final String dataDir;
-  public final boolean useNormData;
-  public final String modelDim;
-  public final int numLayers;
-  public final int[] numNodesPerLayer;
-  public final double[] K;
-  public final double[] M;
-  public final int acousticScalingFactor;
-  public final List<String> contributingPixels;
-  public final int[] stiffnessArray;
+  public String dataDir;
+  public boolean useNormData;
+  public String modelDim;
+  public int numLayers;
+  public int[] numNodesPerLayer;
+  public double[] K;
+  public double[] M;
+  public int acousticScalingFactor;
+  public List<String> contributingPixels;
+  public int[] stiffnessArray;
 
   private Phy3DConfig(Builder b) {
     this.name = b.name;
