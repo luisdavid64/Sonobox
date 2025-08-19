@@ -150,6 +150,9 @@ void resetModel() {
   }
   // We update the config and recreate the model
   createModelFromConfig();
+  audioStreamHandler.shutdown();
+  audioStreamHandler = null;
+  setAudioClient();
 }
 
 void createModelFromConfig() {

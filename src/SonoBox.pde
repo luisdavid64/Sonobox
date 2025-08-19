@@ -13,7 +13,6 @@ int port1DModel = 12001;
 import peasy.*;
 PeasyCam cam;
 //int baseFrameRate = 60;
-float currAudio = 0;
 boolean showInstructions = true;
 
 // minim library for recordings
@@ -99,29 +98,7 @@ void setup() {
   renderer.displayForceVectors(true);
 
   // Audio
-  audioStreamHandler = miPhyAudioClient.miPhyClassic(44100, 128, 0, 2, phys);
-  audioStreamHandler.setListenerAxis(listenerAxis.Y);
-  audioStreamHandler.setGain(gain);
-  audioStreamHandler.start();
-  
-  minim = new Minim(this);
-  int buffSize = 2048;
-  try {
-    boolean stereoAvailable = true;
-    in = minim.getLineIn(Minim.STEREO, 2048);
-    if (in.getFormat().getChannels() != 2) {
-      in.close();
-      stereoAvailable = false;
-      in = minim.getLineIn(Minim.MONO, 2048);
-    }
-    
-    out = minim.getLineOut(stereoAvailable ? Minim.STEREO : Minim.MONO);
-  }
-  catch (Exception e) {
-    println("Error requesting stereo. Falling back to mono.");
-    in = minim.getLineIn(Minim.MONO, 2048);
-    out = minim.getLineOut(Minim.MONO);
-  }
+  setAudioClient();
   // Rendering rate & text setup
   frameRate(displayRate);
   textFont(createFont("Helvetica", 120));
@@ -144,4 +121,3 @@ void draw() {
     showText = false;  // Hide the text after the duration
   }
 }
-
