@@ -248,11 +248,6 @@ void createModelFromConfig() {
   tissueNodeNames.add("m_0_0_0");
   tissueNodeNames.add("m_0_" + nPerLayer[0] + "_0");
   tissueNodeNames.add("m_0_" + (nPerLayer[0] + nPerLayer[1]) + "_0");
-  //ArrayList<Mass> masses = model.getMassList();
-  //for (Mass m : masses) {
-  //    System.out.println(m.getName());
-  //}
-  
 
   subsetsCreation3D(model, tissueNodeNames, nPerLayer, dimX, dimZ, massSubsets);
   tissuePhysicalPropertiesInit(model, nodeM, nodeK, massSubsets);
