@@ -59,6 +59,8 @@ public class phy3DModel extends PhyModel {
     }
   }
 
+
+
   public void setDim(int dx, int dy, int dz, int span) {
     m_dimX = dx;
     m_dimY = dy;
@@ -148,43 +150,28 @@ public class phy3DModel extends PhyModel {
     int idx = 0, idy = 0, idz = 0;
     switch (m_iOrder) {
       case FIRST:
-        generateOffsetGrid(OFFSETS_FIRST);
+        Phy3DTopologyBuilder.generateOffsetGrid(this,OFFSETS_FIRST);
         break;
       case SECOND:
-        generateOffsetGrid(OFFSETS_SECOND);
+        Phy3DTopologyBuilder.generateOffsetGrid(this, OFFSETS_FIRST);
+        Phy3DTopologyBuilder.generateOffsetGrid(this, OFFSETS_SECOND);
         System.out.println("phy3DModel: generating SECOND order interactions");
         break;
       case CHECKERED:
-        generateCheckerboardWithFrame();
+        Phy3DTopologyBuilder.generateCheckerboardWithFrame(this, OFFSETS_FIRST, OFFSETS_CHECKERBOARD_EVEN);
         System.out.println("phy3DModel: generating CHECKERED order interactions");
         break;
       case DILATED2:
-        generateDilated2WithFrame();
+        Phy3DTopologyBuilder.generateDilated2WithFrame(this, OFFSETS_DILATED2, OFFSETS_FIRST);
         System.out.println("phy3DModel: generating DILATED2 order interactions"); // <>// //<>// //<>//
         break;
       case CLIQUE:
-        generateCliques();
+        Phy3DTopologyBuilder.generateCliques(this);
         System.out.println("phy3DModel: generating CLIQUE order interactions");
         break;
       default:
         System.out.println("phy3DModel: generating CUSTOM order interactions"); // <>// //<>// //<>//
-    } // <>//
-    for (int i = 0; i < m_dimX; i++) { // <>//
-      for (int j = 0; j < m_dimY; j++) {
-        for (int k = 0; k < m_dimZ; k++) {
-
-          masName1 = m_mLabel + "_" + (i + "_" + j + "_" + k);
-
-          if (m_iOrder == interactionType.FIRST || m_iOrder == interactionType.SECOND) {
-            applyOffsetsAt(i, j, k, masName1, OFFSETS_FIRST);
-          }
-          if (m_iOrder == interactionType.SECOND) {
-            applyOffsetsAt(i, j, k, masName1, OFFSETS_SECOND); // <>// //<>// //<>//
-          }
-        }
-      }
-    }
-    // <>// //<>// //<>//
+    } 
     m_generated = true;
   }
 
@@ -365,157 +352,19 @@ public class phy3DModel extends PhyModel {
     addInteractions(i2, j2, k2, i, j, k, masName1, fx, fy, fz, mult);
   }
 
-  private void applyOffsetsAt(int i, int j, int k, String masName1, int[][] offsets) {
+  public void applyOffsetsAt(int i, int j, int k, String masName1, int[][] offsets) {
     for (int[] d : offsets) {
       int max = Math.max(d[0], Math.max(d[1], d[2]));
       addIfValid(i + d[0], j + d[1], k + d[2], i, j, k, masName1, max);
     }
   }
 
-  private void generateOffsetGrid(int[][] offsets) {
-    String masName1, masName2;
-    int idx = 0, idy = 0, idz = 0;
-    for (int i = 0; i < m_dimX; i++) {
-      for (int j = 0; j < m_dimY; j++) {
-        for (int k = 0; k < m_dimZ; k++) {
-
-          masName1 = m_mLabel + "_" + (i + "_" + j + "_" + k);
-          applyOffsetsAt(i, j, k, masName1, offsets);
-        }
-      }
-    }
-  }
-
-  private boolean isBoundary(int i, int j, int k) {
-    return (i == 0 || j == 0 || k == 0 ||
-        i == m_dimX - 1 || j == m_dimY - 1 || k == m_dimZ - 1);
-  }
-
-  private void generateCheckerboardWithFrame() {
-    for (int i = 0; i < m_dimX; i++) {
-      for (int j = 0; j < m_dimY; j++) {
-        for (int k = 0; k < m_dimZ; k++) {
-          String masName1 = m_mLabel + "_" + i + "_" + j + "_" + k;
-          // 1) boundary wireframe (axis-aligned frame)
-          if (isBoundary(i, j, k)) {
-            applyOffsetsAt(i, j, k, masName1, OFFSETS_FIRST);
-          }
-          // 2) interior + boundary diagonals on checkerboard-even cells
-          if (((i + j + k) & 1) == 0) {
-            applyOffsetsAt(i, j, k, masName1, OFFSETS_CHECKERBOARD_EVEN);
-          }
-        }
-      }
-    }
-  }
-
-  private void generateDilated2WithFrame() {
-    for (int i = 0; i < m_dimX; i++)
-      for (int j = 0; j < m_dimY; j++)
-        for (int k = 0; k < m_dimZ; k++) {
-          String name = m_mLabel + "_" + i + "_" + j + "_" + k;
-
-          // 1) sparse dilated interior links
-          applyOffsetsAt(i, j, k, name, OFFSETS_DILATED2);
-
-          // 2) boundary wireframe (connectivity around the hull)
-          if (isBoundary(i, j, k)) {
-            applyOffsetsAt(i, j, k, name, OFFSETS_FIRST);
-          }
-        }
-  }
-
-  private void generateCliques() {
-    // This generates isolated 2x2x2 (or 2x2 if dimZ==1) cliques,
-    // connecting each clique to its neighbors by a single edge.
-    int cliqueX = (m_dimX + 1) / 2;
-    int cliqueY = (m_dimY + 1) / 2;
-    int cliqueZ = (m_dimZ + 1) / 2;
-
-    // 1. Generate intra-clique full connections (all pairs within each 2x2x2 block)
-    for (int cx = 0; cx < cliqueX; cx++) {
-      for (int cy = 0; cy < cliqueY; cy++) {
-        for (int cz = 0; cz < cliqueZ; cz++) {
-          // Gather all valid nodes in this clique
-          ArrayList<int[]> nodes = new ArrayList<>();
-          for (int dx = 0; dx < 2; dx++) {
-            for (int dy = 0; dy < 2; dy++) {
-              for (int dz = 0; dz < ((m_dimZ > 1) ? 2 : 1); dz++) {
-                int i = cx * 2 + dx;
-                int j = cy * 2 + dy;
-                int k = cz * 2 + dz;
-                if (i < m_dimX && j < m_dimY && k < m_dimZ) {
-                  nodes.add(new int[] { i, j, k });
-                }
-              }
-            }
-          }
-          // Fully connect all pairs within the clique
-          for (int a = 0; a < nodes.size(); a++) {
-            int[] n1 = nodes.get(a);
-            String masName1 = m_mLabel + "_" + n1[0] + "_" + n1[1] + "_" + n1[2];
-            for (int b = a + 1; b < nodes.size(); b++) {
-              int[] n2 = nodes.get(b);
-              String masName2 = m_mLabel + "_" + n2[0] + "_" + n2[1] + "_" + n2[2];
-              // Use the difference as the direction vector
-              int dx = n2[0] - n1[0];
-              int dy = n2[1] - n1[1];
-              int dz = n2[2] - n1[2];
-              addInteractions(n2[0], n2[1], n2[2], n1[0], n1[1], n1[2], masName1, dx, dy, dz,
-                  Math.max(Math.abs(dx), Math.max(Math.abs(dy), Math.abs(dz))));
-            }
-          }
-        }
-      }
-    }
-
-    // 2. Connect each clique to its neighbors by a single edge (from the
-    // boundary-most node in this clique to the boundary-most node in the neighbor
-    // clique)
-    for (int cx = 0; cx < cliqueX; cx++) {
-      for (int cy = 0; cy < cliqueY; cy++) {
-        for (int cz = 0; cz < cliqueZ; cz++) {
-          // For each direction, connect the boundary-most node of this clique to the
-          // boundary-most node of the neighbor clique
-          // X neighbor clique
-          if (cx + 1 < cliqueX) {
-            // Use only one node per clique face for X direction
-            int i1 = Math.min((cx + 1) * 2 - 1, m_dimX - 1); // rightmost in this clique
-            int i2 = Math.min((cx + 1) * 2, m_dimX - 1); // leftmost in neighbor clique
-            int j = Math.min(cy * 2, m_dimY - 1);
-            int k = Math.min(cz * 2, m_dimZ - 1);
-            String masName1 = m_mLabel + "_" + i1 + "_" + j + "_" + k;
-            String masName2 = m_mLabel + "_" + i2 + "_" + j + "_" + k;
-            addInteractions(i2, j, k, i1, j, k, masName1, i2 - i1, 0, 0, Math.abs(i2 - i1));
-          }
-          // Y neighbor clique
-          if (cy + 1 < cliqueY) {
-            // Use only one node per clique face for Y direction
-            int j1 = Math.min((cy + 1) * 2 - 1, m_dimY - 1); // topmost in this clique
-            int j2 = Math.min((cy + 1) * 2, m_dimY - 1); // bottommost in neighbor clique
-            int i = Math.min(cx * 2, m_dimX - 1);
-            int k = Math.min(cz * 2, m_dimZ - 1);
-            String masName1 = m_mLabel + "_" + i + "_" + j1 + "_" + k;
-            String masName2 = m_mLabel + "_" + i + "_" + j2 + "_" + k;
-            addInteractions(i, j2, k, i, j1, k, masName1, 0, j2 - j1, 0, Math.abs(j2 - j1));
-          }
-          // Z neighbor clique (if 3D)
-          if (m_dimZ > 1 && cz + 1 < cliqueZ) {
-            // Use only one node per clique face for Z direction
-            int k1 = Math.min((cz + 1) * 2 - 1, m_dimZ - 1); // frontmost in this clique
-            int k2 = Math.min((cz + 1) * 2, m_dimZ - 1); // backmost in neighbor clique
-            int i = Math.min(cx * 2, m_dimX - 1);
-            int j = Math.min(cy * 2, m_dimY - 1);
-            String masName1 = m_mLabel + "_" + i + "_" + j + "_" + k1;
-            String masName2 = m_mLabel + "_" + i + "_" + j + "_" + k2;
-            addInteractions(i, j, k2, i, j, k1, masName1, 0, 0, k2 - k1, Math.abs(k2 - k1));
-          }
-        }
-      }
-    }
-  }
-
   public void clearInOutLabels() {
     m_inOutLabels.clear();
   }
+
+  public int getDimX() { return m_dimX; }
+  public int getDimY() { return m_dimY; }
+  public int getDimZ() { return m_dimZ; }
+  public String getMassLabel() { return m_mLabel; }
 }
