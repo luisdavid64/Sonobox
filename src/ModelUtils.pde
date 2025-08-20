@@ -196,7 +196,7 @@ void createModelFromConfig() {
 
   subsetsCreation3D(model, tissueNodeNames, nPerLayer, dimX, dimZ, massSubsets);
   tissuePhysicalPropertiesInit(model, nodeM, nodeK, massSubsets);
-  tissueNodesDefinition3D(model, tissueNodeNames);
+  //tissueNodesDefinition3D(model, tissueNodeNames);
 
   phys.mdl().addPhyModel(model);
   println("Drivers initialized: " + (drivers != null));
