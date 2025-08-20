@@ -310,9 +310,9 @@ public class phy3DModel extends PhyModel {
   private void addIfValid(int i2, int j2, int k2, int i, int j, int k, String masName1, int mult) {
     if (i2 < 0 || j2 < 0 || k2 < 0 || i2 >= m_dimX || j2 >= m_dimY || k2 >= m_dimZ)
       return;
-    // forward-only guard
-    if (lin(i2, j2, k2) <= lin(i, j, k))
-      return;
+    // forward-only guard. Do we need it?
+    // if (lin(i2, j2, k2) <= lin(i, j, k))
+    //   return;
 
     int dx = Integer.compare(i2, i);
     int dy = Integer.compare(j2, j);
