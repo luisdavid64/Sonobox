@@ -5,6 +5,7 @@ boolean upPressed = false;
 boolean downPressed = false;
 boolean cPressed = false;
 boolean dPressed = false;
+boolean rPressed = false;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -26,13 +27,14 @@ void keyPressed() {
 
   if (key == 's') {
     String base = "/Users/luisreyes/Sonify/SonoBox/model_configs/";
-    String name = config.name 
+    String name = config.name
     + "_x_" + config.dimX + "y_" + config.dimY + "z_" + config.dimZ + "_inter_" + config.interactionType + ".json";
     config.writeProcessingJson(Paths.get(base + "/" + name));
     println("Saved current configuration to Processing JSON format.");
   }
 
   if (key == 'c' || key == 'C') cPressed = true;
+  if (key == 'r' || key == 'R') rPressed = true;
   if (key == 'd' || key == 'D') dPressed = true;
   if (key == 'y' || key == 'Y') yPressed = true;
   if (key == 'x' || key == 'X') xPressed = true;
@@ -46,6 +48,7 @@ void keyPressed() {
 void keyReleased() {
   // combo tracking (optional)
   if (key == 'c' || key == 'C') cPressed = false;
+  if (key == 'r' || key == 'R') rPressed = false;
   if (key == 'd' || key == 'D') dPressed = false;
   if (key == 'y' || key == 'Y') yPressed = false;
   if (key == 'x' || key == 'X') xPressed = false;
@@ -70,24 +73,22 @@ void checkModelChanges() {
       modelChanged = true;
     } 
   }
-  if (xPressed && upPressed) {
-    config.dimX += 1;
-    println("Increasing X dimension to: " + config.dimX);
+
+  if (xPressed && (upPressed || downPressed)) {
+    config.dimX += (downPressed ? -1 : 1);
+    println("Changing X dimension to: " + config.dimX);
     modelChanged = true;
   }
-  if (xPressed && downPressed) {
-    config.dimX -= 1;
-    println("Decreasing X dimension to: " + config.dimX);
+
+  if (zPressed && (upPressed || downPressed)) {
+    config.dimZ += (downPressed ? -1 : 1);
+    println("Changing Z dimension to: " + config.dimZ);
     modelChanged = true;
   }
-  if (zPressed && upPressed) {
-    config.dimZ += 1;
-    println("Increasing Z dimension to: " + config.dimZ);
-    modelChanged = true;
-  }
-  if (zPressed && downPressed) {
-    config.dimZ -= 1;                  
-    println("Decreasing Z dimension to: " + config.dimZ);
+
+  if (rPressed && (upPressed || downPressed)) {
+    config.massRadius += (downPressed ? -1 : 1);
+    println("Decreasing mass size to: " + config.dimZ);
     modelChanged = true;
   }
   
