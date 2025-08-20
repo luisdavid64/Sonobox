@@ -99,11 +99,6 @@ void setup() {
   renderer.displayIntersectionVolumes(true);
   renderer.displayForceVectors(true);
 
-  controller = new ModelController(
-    config,
-    new ModelController.ResetHook() { public void run() { resetModel(); } },
-    new ModelController.MessageSink() { public void show(String s) { produceRenderedMessage(s); } }
-  );
 
   // Audio
   setAudioClient();

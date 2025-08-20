@@ -154,7 +154,6 @@ void resetModel() {
 }
 
 void createModelFromConfig() {
-  initBaseline(config.numNodesPerLayer);
   String modelType = config.modelDim; // "1D", "2D", or "3D"
   println("IMPLEMENTING A "+ modelType +" TOPOLOGY FOR THE SOUND MODEL");
   int[] nPerLayer = config.numNodesPerLayer; // number of nodes per layer
@@ -203,6 +202,13 @@ void createModelFromConfig() {
   println("Listeners initialized: " + (listeners != null));
   
   phys.init();
+  
+  controller = new ModelController(
+    config,
+    new ModelController.ResetHook() { public void run() { resetModel(); } },
+    new ModelController.MessageSink() { public void show(String s) { produceRenderedMessage(s); } }
+  );
+  controller.initBaseline(config.numNodesPerLayer);
   
 }
 
