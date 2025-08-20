@@ -103,7 +103,6 @@ void checkModelChanges() {
     String axis = xPressed ? "X" : "Z";
     var newDrivers = shiftNodeName(config.driverNodes, axis);
     var newListeners = shiftNodeName(config.listenerNodes, axis);
-    model.clearInOutLabels();
     config.driverNodes = newDrivers;
     config.listenerNodes = newListeners;
     modelChanged = true;
