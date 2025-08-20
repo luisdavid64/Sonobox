@@ -33,8 +33,8 @@ public class phy3DModel extends PhyModel {
     SECOND,
     CHECKERED,
     DILATED2,
-    // CUSTOM,
     CLIQUE,
+    // CUSTOM,
   }
 
   private interactionType m_iOrder = interactionType.FIRST;
@@ -515,16 +515,7 @@ public class phy3DModel extends PhyModel {
     }
   }
 
-
   public void clearInOutLabels() {
     m_inOutLabels.clear();
-  }
-
-  private List<String> currentDriverNodes() {
-    ArrayList<String> nodes = new ArrayList<>();
-    for (Driver3D d : this.getDrivers()) {
-      nodes.add(d.getMat().getName());
-    }
-    return nodes;
   }
 }
