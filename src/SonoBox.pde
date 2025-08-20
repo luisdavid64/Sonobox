@@ -39,6 +39,7 @@ ModelRenderer renderer;
 miPhyAudioClient audioStreamHandler;
 Phy3DConfig config; // loading json config parameters
 phy3DModel model;
+ModelController controller;
 
 // physical parameters
 float friction = 0.25;
@@ -97,6 +98,12 @@ void setup() {
   renderer.setStrainColor(interType.SPRINGDAMPER3D, 105, 100, 200, 255);
   renderer.displayIntersectionVolumes(true);
   renderer.displayForceVectors(true);
+
+  controller = new ModelController(
+    config,
+    new ModelController.ResetHook() { public void run() { resetModel(); } },
+    new ModelController.MessageSink() { public void show(String s) { produceRenderedMessage(s); } }
+  );
 
   // Audio
   setAudioClient();

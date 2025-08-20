@@ -60,58 +60,32 @@ void keyReleased() {
 void checkModelChanges() {
   boolean modelChanged = false;
   if (yPressed && upPressed) {
-    int i = pickForIncrement(config.numNodesPerLayer, baselineW);
-    config.numNodesPerLayer[i] += 1;
-    config.dimY += 1;
-    modelChanged = true;
+    controller.incrementY();
   }
   if (yPressed && downPressed) {
-    int i = pickForDecrement(config.numNodesPerLayer, baselineW);
-    if (i != -1) {
-      config.numNodesPerLayer[i] -= 1;
-      config.dimY -= 1;
-      modelChanged = true;
-    } 
+    controller.decrementY();
   }
 
   if (xPressed && (upPressed || downPressed)) {
-    config.dimX += (downPressed ? -1 : 1);
-    println("Changing X dimension to: " + config.dimX);
-    modelChanged = true;
+    controller.adjustX(upPressed ? 1 : -1);
   }
 
   if (zPressed && (upPressed || downPressed)) {
-    config.dimZ += (downPressed ? -1 : 1);
-    println("Changing Z dimension to: " + config.dimZ);
-    modelChanged = true;
+    controller.adjustZ(upPressed ? 1 : -1);
   }
 
   if (rPressed && (upPressed || downPressed)) {
-    config.massRadius += (downPressed ? -1 : 1);
-    println("Decreasing mass size to: " + config.dimZ);
-    modelChanged = true;
+    controller.adjustRadius(upPressed ? 1 : -1);
   }
   
   if (cPressed) {
-      
-      InteractionType[] vals = InteractionType.values();
-      config.interactionType = vals[(config.interactionType.ordinal() + 1) % vals.length];
-      modelChanged = true;
+      controller.cycleInteractionType();
       produceRenderedMessage(config.interactionType.name());
   }
   if (dPressed && (xPressed || zPressed)) {
-    String axis = xPressed ? "X" : "Z";
-    var newDrivers = shiftNodeName(config.driverNodes, axis);
-    var newListeners = shiftNodeName(config.listenerNodes, axis);
-    config.driverNodes = newDrivers;
-    config.listenerNodes = newListeners;
-    modelChanged = true;
+    char axis = (xPressed ? 'X' : 'Z');
+    controller.shiftDriversListeners(axis);
     produceRenderedMessage("Shifted driver and listener nodes on " + axis + " axis.");
-  }
-      
-  if (modelChanged) {
-    checkDimValidity();
-    resetModel();
   }
 }
 
