@@ -31,6 +31,7 @@ boolean isRecording = false;
 import miPhysics.Renderer.*;
 import miPhysics.Engine.*;
 import miPhysics.Engine.Sound.*;
+import miPhysics.Engine.InteractionConstants.*;
 
 PhysicsContext phys;
 PhyModel mdl;

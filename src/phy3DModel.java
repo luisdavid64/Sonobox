@@ -2,6 +2,7 @@ package miPhysics.Engine;
 
 import java.util.*;
 import miPhysics.Engine.*;
+import miPhysics.Engine.InteractionConstants.*;
 
 public class phy3DModel extends PhyModel {
   private boolean m_generated = false;
@@ -28,20 +29,7 @@ public class phy3DModel extends PhyModel {
   private double m_l0 = 1;
   private MassIDAdapter m_mIDAdapter = new MassIDAdapter();
 
-  public enum interactionType {
-    FIRST,
-    SECOND,
-    CHECKERED,
-    DILATED2,
-    CLIQUE,
-    // CUSTOM,
-  }
-
-  private interactionType m_iOrder = interactionType.FIRST;
-  private static final int[][] OFFSETS_FIRST = { { +1, 0, 0 }, { 0, +1, 0 }, { 0, 0, +1 } };
-  private static final int[][] OFFSETS_SECOND = { { 0, +1, +1 }, { +1, 0, +1 }, { +1, +1, 0 }, { +1, +1, +1 } };
-  private static final int[][] OFFSETS_CHECKERBOARD_EVEN = { { +1, +1, 0 }, { +1, 0, +1 }, { 0, +1, +1 } };
-  private static final int[][] OFFSETS_DILATED2 = { { +2, 0, 0 }, { 0, +2, 0 }, { 0, 0, +2 } }; // “skip” springs
+  private InteractionType m_iOrder = InteractionType.FIRST;
 
   private EnumSet<Bound> bCond;
 
@@ -150,19 +138,19 @@ public class phy3DModel extends PhyModel {
     int idx = 0, idy = 0, idz = 0;
     switch (m_iOrder) {
       case FIRST:
-        Phy3DTopologyBuilder.generateOffsetGrid(this,OFFSETS_FIRST);
+        Phy3DTopologyBuilder.generateOffsetGrid(this,InteractionConstants.OFFSETS_FIRST);
         break;
       case SECOND:
-        Phy3DTopologyBuilder.generateOffsetGrid(this, OFFSETS_FIRST);
-        Phy3DTopologyBuilder.generateOffsetGrid(this, OFFSETS_SECOND);
+        Phy3DTopologyBuilder.generateOffsetGrid(this, InteractionConstants.OFFSETS_FIRST);
+        Phy3DTopologyBuilder.generateOffsetGrid(this, InteractionConstants.OFFSETS_SECOND);
         System.out.println("phy3DModel: generating SECOND order interactions");
         break;
       case CHECKERED:
-        Phy3DTopologyBuilder.generateCheckerboardWithFrame(this, OFFSETS_FIRST, OFFSETS_CHECKERBOARD_EVEN);
+        Phy3DTopologyBuilder.generateCheckerboardWithFrame(this, InteractionConstants.OFFSETS_FIRST, InteractionConstants.OFFSETS_CHECKERBOARD_EVEN);
         System.out.println("phy3DModel: generating CHECKERED order interactions");
         break;
       case DILATED2:
-        Phy3DTopologyBuilder.generateDilated2WithFrame(this, OFFSETS_DILATED2, OFFSETS_FIRST);
+        Phy3DTopologyBuilder.generateDilated2WithFrame(this, InteractionConstants.OFFSETS_DILATED2, InteractionConstants.OFFSETS_FIRST);
         System.out.println("phy3DModel: generating DILATED2 order interactions"); // <>// //<>// //<>//
         break;
       case CLIQUE:
@@ -173,14 +161,14 @@ public class phy3DModel extends PhyModel {
         System.out.println("phy3DModel: generating CUSTOM order interactions"); // <>// //<>// //<>//
     } 
     m_generated = true;
-  }
+  } //<>//
 
   // <>//
   public void addInteractions(int idx, int idy, int idz, int i, int j, int k, String masName1, int a, int b, int c,
       int mult) {
     Vect3D X0, U1; // <>//
     String masName2; // <>//
-    if ((idx < m_dimX) && (idy < m_dimY) && (idz < m_dimZ)) { // <>// //<>// //<>//
+    if ((idx < m_dimX) && (idy < m_dimY) && (idz < m_dimZ)) { // <>// //<>// //<>// //<>//
       if ((idx >= 0) && (idy >= 0) && (idz >= 0)) { // <>//
         if (!((idx == i) && (idy == j) && (idz == k))) { // <>//
           U1 = new Vect3D(a, b, c);
@@ -192,12 +180,12 @@ public class phy3DModel extends PhyModel {
           if ((j == m_dimY - 2) || (j == 0)) {
             addInteraction(ln, new Spring3D(mult * d, stiffness), masName1, masName2);
           } else {
-            addInteraction(ln, new Spring3D(mult * d, stiffness), masName1, masName2);
+            addInteraction(ln, new Spring3D(mult * d, stiffness), masName1, masName2); //<>//
           }
         }
       }
     }
-  }
+  } //<>//
 
   public void addBoundaryCondition(Bound b) {
     bCond.add(b);
@@ -206,7 +194,7 @@ public class phy3DModel extends PhyModel {
   private void applyBoundaryConditions() {
 
     if (bCond.contains(Bound.X_LEFT)) {
-      for (int j = 0; j < m_dimY; j++) {
+      for (int j = 0; j < m_dimY; j++) { //<>//
         for (int k = 0; k < m_dimZ; k++) {
           String name = m_mLabel + ("_0_" + j + "_" + k);
           System.out.println("changing to fix point mass:: " + name);
@@ -325,7 +313,7 @@ public class phy3DModel extends PhyModel {
     this.m_modelType = modelType;
   }
 
-  public void setInteractionType(interactionType it) {
+  public void setInteractionType(InteractionType it) {
     this.m_iOrder = it;
   }
 

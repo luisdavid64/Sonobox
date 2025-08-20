@@ -93,7 +93,7 @@ void checkModelChanges() {
   
   if (cPressed) {
       
-      phy3DModel.interactionType[] vals = phy3DModel.interactionType.values();
+      InteractionType[] vals = InteractionType.values();
       config.interactionType = vals[(config.interactionType.ordinal() + 1) % vals.length];
       modelChanged = true;
       produceRenderedMessage(config.interactionType.name());

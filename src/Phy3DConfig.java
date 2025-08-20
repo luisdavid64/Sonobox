@@ -6,6 +6,7 @@ import java.util.*;
 import java.util.stream.*;
 
 import com.google.gson.*;
+import miPhysics.Engine.InteractionConstants.*;
 
 public class Phy3DConfig {
   // ---- Engine core knobs ----
@@ -31,7 +32,7 @@ public class Phy3DConfig {
   public int acousticScalingFactor;
   public List<String> contributingPixels;
   public int[] stiffnessArray;
-  public phy3DModel.interactionType interactionType;
+  public InteractionType interactionType;
 
 
   private Phy3DConfig(Builder b) {
@@ -54,7 +55,7 @@ public class Phy3DConfig {
     this.acousticScalingFactor = b.acousticScalingFactor;
     this.contributingPixels = List.copyOf(b.contributingPixels);
     this.stiffnessArray = b.stiffnessArray != null ? b.stiffnessArray.clone() : new int[0];
-    this.interactionType = b.interactionType != null ? b.interactionType : phy3DModel.interactionType.FIRST;
+    this.interactionType = b.interactionType != null ? b.interactionType : InteractionType.FIRST;
   }
 
   public Builder toBuilder() {
@@ -100,7 +101,7 @@ public class Phy3DConfig {
     private int acousticScalingFactor = 1;
     private List<String> contributingPixels = new ArrayList<>();
     private int[] stiffnessArray = new int[0];
-    private phy3DModel.interactionType interactionType = phy3DModel.interactionType.FIRST;
+    private InteractionType interactionType = InteractionType.FIRST;
 
     public Builder name(String n){ this.name=n; return this; }
     public Builder dims(int x,int y,int z){ this.dimX=x; this.dimY=y; this.dimZ=z; return this; }
@@ -122,7 +123,7 @@ public class Phy3DConfig {
     public Builder acousticScalingFactor(int v){ this.acousticScalingFactor=v; return this; }
     public Builder contributingPixels(Collection<String> a){ this.contributingPixels = new ArrayList<>(a); return this; }
     public Builder stiffnessArray(int[] a){ this.stiffnessArray = a!=null?a.clone():new int[0]; return this; }
-    public Builder interactionType(phy3DModel.interactionType t) { this.interactionType = t; return this; }
+    public Builder interactionType(InteractionType t) { this.interactionType = t; return this; }
 
     public Phy3DConfig build(){ return new Phy3DConfig(this); }
   }
@@ -149,7 +150,7 @@ public class Phy3DConfig {
     }
     if (g.has("interactionType")) {
       String it = g.get("interactionType").getAsString();
-      b.interactionType(phy3DModel.interactionType.valueOf(it.toUpperCase()));
+      b.interactionType(InteractionType.valueOf(it.toUpperCase()));
     }
 
     // parameters
