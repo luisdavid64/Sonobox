@@ -7,9 +7,6 @@ import miPhysics.Engine.InteractionConstants.*;
 public class phy3DModel extends PhyModel {
   private boolean m_generated = false;
 
-  // private int numNodes = 3;
-  // private int numInteractions = numNodes + 1;
-
   // dimension of the model
   private int m_dimX = 1;
   private int m_dimY = 1;
@@ -47,8 +44,6 @@ public class phy3DModel extends PhyModel {
     }
   }
 
-
-
   public void setDim(int dx, int dy, int dz, int span) {
     m_dimX = dx;
     m_dimY = dy;
@@ -57,7 +52,6 @@ public class phy3DModel extends PhyModel {
   }
 
   public void setGeometry(double d) { // vr: constraint for interaction elements: the distance between nodes and the
-                                      // initial length is the same
     m_dist = d;
     m_l0 = d;
   }
@@ -102,11 +96,6 @@ public class phy3DModel extends PhyModel {
   }
 
   public void generate() {
-    // System.out.println(this.getName() + ": creating mass elements with naming
-    // pattern: " + m_mLabel + "_[X]_[Y]_[Z]");
-    // System.out.println(this.getName() + ": creating interaction elements with
-    // naming pattern: " + m_iLabel + "_[X1]_[Y1]_[Z1]_[X2]_[Y2]_[Z2]");
-
     String masName;
     Vect3D X0, U1;
     System.out.println(this.getName() + ": creating mass elements with naming pattern: "
@@ -161,19 +150,16 @@ public class phy3DModel extends PhyModel {
         System.out.println("phy3DModel: generating CUSTOM order interactions"); // <>// //<>// //<>//
     } 
     m_generated = true;
-  } //<>//
+  }
 
-  // <>//
   public void addInteractions(int idx, int idy, int idz, int i, int j, int k, String masName1, int a, int b, int c,
       int mult) {
-    Vect3D X0, U1; // <>//
-    String masName2; // <>//
-    if ((idx < m_dimX) && (idy < m_dimY) && (idz < m_dimZ)) { // <>// //<>// //<>// //<>//
-      if ((idx >= 0) && (idy >= 0) && (idz >= 0)) { // <>//
-        if (!((idx == i) && (idy == j) && (idz == k))) { // <>//
+    Vect3D X0, U1;
+    String masName2;
+    if ((idx < m_dimX) && (idy < m_dimY) && (idz < m_dimZ)) {
+      if ((idx >= 0) && (idy >= 0) && (idz >= 0)) { 
+        if (!((idx == i) && (idy == j) && (idz == k))) {
           U1 = new Vect3D(a, b, c);
-          // if (j > m_dimY-3)
-          // m_l0 = m_l0 * 0.5;
           double d = U1.norm() * m_l0;
           masName2 = m_mLabel + "_" + (idx + "_" + idy + "_" + idz);
           String ln = m_iLabel + "_" + (idx + "_" + idy + "_" + idz) + "_" + (i + "_" + j + "_" + k);
@@ -185,7 +171,7 @@ public class phy3DModel extends PhyModel {
         }
       }
     }
-  } //<>//
+  }
 
   public void addBoundaryCondition(Bound b) {
     bCond.add(b);
@@ -194,7 +180,7 @@ public class phy3DModel extends PhyModel {
   private void applyBoundaryConditions() {
 
     if (bCond.contains(Bound.X_LEFT)) {
-      for (int j = 0; j < m_dimY; j++) { //<>//
+      for (int j = 0; j < m_dimY; j++) { 
         for (int k = 0; k < m_dimZ; k++) {
           String name = m_mLabel + ("_0_" + j + "_" + k);
           System.out.println("changing to fix point mass:: " + name);
