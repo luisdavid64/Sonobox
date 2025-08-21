@@ -7,7 +7,7 @@ public class InteractionConstants {
         SECOND,
         CHECKERED,
         DILATED2,
-        CLIQUE,
+        CLIQUE_2x2,
         // CUSTOM,
     }
 

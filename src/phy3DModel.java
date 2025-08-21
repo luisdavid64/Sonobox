@@ -142,7 +142,7 @@ public class phy3DModel extends PhyModel {
         Phy3DTopologyBuilder.generateDilated2WithFrame(this, InteractionConstants.OFFSETS_DILATED2, InteractionConstants.OFFSETS_FIRST);
         System.out.println("phy3DModel: generating DILATED2 order interactions"); // <>// //<>// //<>//
         break;
-      case CLIQUE:
+      case CLIQUE_2x2:
         Phy3DTopologyBuilder.generateCliques(this);
         System.out.println("phy3DModel: generating CLIQUE order interactions");
         break;
