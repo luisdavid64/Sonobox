@@ -62,5 +62,80 @@ void oscEvent(OscMessage msg) {
     phys.setParamForMassSubset(setName, param.MASS, setMass);
     break;
   }
+  // OSC ModelController API usage
+  processOSCModelControllerEvents(pattern, msg);
     
+}
+
+void processOSCModelControllerEvents(String pattern, OscMessage msg) {
+
+    // -------------------- CONTROLLER ROUTES (NEW) --------------------
+  switch (pattern) {
+    case "/dim/y": { // arg: +1 or -1
+      int step = asInt(msg, 0, 0);
+      if (step > 0) controller.incrementY();
+      else if (step < 0) controller.decrementY();
+      break;
+    }
+
+    case "/dim/x": { // arg: +1 or -1
+      controller.adjustX(signOrZero(msg, 0));
+      break;
+    }
+
+    case "/dim/z": { // arg: +1 or -1
+      controller.adjustZ(signOrZero(msg, 0));
+      break;
+    }
+
+    case "/mass/radius": { // arg: +1 or -1
+      controller.adjustRadius(signOrZero(msg, 0));
+      break;
+    }
+
+    case "/interaction/next": { // no args
+      controller.cycleInteractionType();
+      break;
+    }
+
+    case "/shiftInOut": { // arg: "X" or "Z"
+      char axis = axisChar(msg, 0, 'X');
+      controller.shiftDriversListeners(axis);
+      break;
+    }
+
+    // -------------------- NON-CONTROLLER UTILITIES (OPTIONAL) --------------------
+
+    case "/config/save": { // optional string arg: base path
+      String name = (msg.typetag().length() > 0)
+        ? msg.get(0).stringValue()
+        : "/Users/luisreyes/Sonify/SonoBox/model_configs/config_api.json";
+      config.writeProcessingJson(java.nio.file.Paths.get(name));
+      System.out.println("Saved current configuration to Processing JSON format.");
+      break;
+    }
+  }
+}
+
+int signOrZero(OscMessage m, int i) {
+  return Integer.signum(asInt(m, i, 0));
+}
+
+int asInt(OscMessage m, int i, int defVal) {
+  try { return m.get(i).intValue(); } catch (Exception e) { return defVal; }
+}
+
+float asFloat(OscMessage m, int i, float defVal) {
+  try { return m.get(i).floatValue(); } catch (Exception e) { return defVal; }
+}
+
+char axisChar(OscMessage m, int i, char defVal) {
+  try {
+    String s = m.get(i).stringValue();
+    if (s == null || s.isEmpty()) return defVal;
+    char c = Character.toUpperCase(s.charAt(0));
+    return (c == 'X' || c == 'Z') ? c : defVal;
+  } catch (Exception e) {
+    return defVal;
+  }
 }
