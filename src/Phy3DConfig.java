@@ -51,9 +51,10 @@ public class Phy3DConfig {
     this.modelDim = b.modelDim;
     this.numLayers = b.numLayers;
     this.numNodesPerLayer = b.numNodesPerLayer != null ? b.numNodesPerLayer.clone() : new int[0];
-    this.K = b.K != null ? b.K.clone() : new double[0];
-    this.M = b.M != null ? b.M.clone() : new double[0];
-    this.C = b.C != null ? b.C.clone() : new double[0];
+    this.K = b.K != null ? b.K.clone() : new double[numLayers];
+    this.M = b.M != null ? b.M.clone() : new double[numLayers];
+    this.C = b.C != null ? b.C.clone() : new double[numLayers];
+    // Default to a list of 0s with length numLayers
     this.acousticScalingFactor = b.acousticScalingFactor;
     this.contributingPixels = List.copyOf(b.contributingPixels);
     this.stiffnessArray = b.stiffnessArray != null ? b.stiffnessArray.clone() : new int[0];
@@ -99,9 +100,9 @@ public class Phy3DConfig {
     private String modelDim = "1D";
     private int numLayers = 1;
     private int[] numNodesPerLayer = new int[0];
-    private double[] K = new double[0];
-    private double[] M = new double[0];
-    private double[] C = new double[0];
+    private double[] K = null;
+    private double[] M = null;
+    private double[] C = null;
     private int acousticScalingFactor = 1;
     private List<String> contributingPixels = new ArrayList<>();
     private int[] stiffnessArray = new int[0];
@@ -122,9 +123,9 @@ public class Phy3DConfig {
     public Builder modelDim(String m){ this.modelDim=m; return this; }
     public Builder numLayers(int n){ this.numLayers=n; return this; }
     public Builder numNodesPerLayer(int[] a){this.numNodesPerLayer = a != null ? a.clone() : new int[0]; return this;}
-    public Builder K(double[] arr){ this.K = arr!=null?arr.clone():new double[0]; return this; }
-    public Builder M(double[] arr){ this.M = arr!=null?arr.clone():new double[0]; return this; }
-    public Builder C(double[] arr){ this.C = arr!=null?arr.clone():new double[0]; return this; }
+    public Builder K(double[] arr){ this.K = (arr != null) ? arr.clone() : null; return this; }
+    public Builder M(double[] arr){ this.M = (arr != null) ? arr.clone() : null; return this; }
+    public Builder C(double[] arr){ this.C = (arr != null) ? arr.clone() : null; return this; }
     public Builder acousticScalingFactor(int v){ this.acousticScalingFactor=v; return this; }
     public Builder contributingPixels(Collection<String> a){ this.contributingPixels = new ArrayList<>(a); return this; }
     public Builder stiffnessArray(int[] a){ this.stiffnessArray = a!=null?a.clone():new int[0]; return this; }
