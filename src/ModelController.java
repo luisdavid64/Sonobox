@@ -74,6 +74,30 @@ public class ModelController {
         onModelChanged();
     }
 
+    public void adjustMs(double[] incrementsM) {
+        double[] results = new double[config.M.length];
+        for (int i = 0; i < results.length; i++) {
+            results[i] = config.M[i] + incrementsM[i];
+        }
+        config.M = results;
+    }
+
+    public void adjustKs(double[] incrementsK) {
+        double[] results = new double[config.K.length];
+        for (int i = 0; i < results.length; i++) {
+            results[i] = config.K[i] + incrementsK[i];
+        }
+        config.K = results;
+    }
+
+    public void adjustCs(double[] incrementsC) {
+        double[] results = new double[config.C.length];
+        for (int i = 0; i < results.length; i++) {
+            results[i] = config.C[i] + incrementsC[i];
+        }
+        config.C = results;
+    }
+
     public void cycleInteractionType() {
         InteractionType[] vals = InteractionType.values();
         config.interactionType = vals[(config.interactionType.ordinal() + 1) % vals.length];

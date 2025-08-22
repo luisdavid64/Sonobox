@@ -93,6 +93,21 @@ void processOSCModelControllerEvents(String pattern, OscMessage msg) {
       break;
     }
 
+    case "/mass/mass": { // arg: +1 or -1
+      controller.adjustMs(asDoubleArray(msg));
+      break;
+    }
+
+    case "/spring/k": { // arg: +1 or -1
+      controller.adjustKs(asDoubleArray(msg));
+      break;
+    }
+
+    case "/spring/c": { // arg: +1 or -1
+      controller.adjustKs(asDoubleArray(msg));
+      break;
+    }
+
     case "/interaction/next": { // no args
       controller.cycleInteractionType();
       break;
@@ -138,4 +153,23 @@ char axisChar(OscMessage m, int i, char defVal) {
   } catch (Exception e) {
     return defVal;
   }
+}
+
+double[] asDoubleArray(OscMessage m) {
+    int size = m.typetag().length();
+    double[] values = new double[size];
+    for (int i = 0; i < size; i++) {
+        try {
+            Object arg = m.get(i);
+            if (arg instanceof Number) {
+                values[i] = ((Number) arg).doubleValue();
+            } else {
+                // if it's not numeric, fallback to NaN
+                values[i] = Double.NaN;
+            }
+        } catch (Exception e) {
+            values[i] = Double.NaN; // or some default value
+        }
+    }
+    return values;
 }
