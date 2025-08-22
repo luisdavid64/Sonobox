@@ -156,20 +156,24 @@ char axisChar(OscMessage m, int i, char defVal) {
 }
 
 double[] asDoubleArray(OscMessage m) {
-    int size = m.typetag().length();
-    double[] values = new double[size];
-    for (int i = 0; i < size; i++) {
-        try {
-            Object arg = m.get(i);
-            if (arg instanceof Number) {
-                values[i] = ((Number) arg).doubleValue();
-            } else {
-                // if it's not numeric, fallback to NaN
-                values[i] = Double.NaN;
-            }
-        } catch (Exception e) {
-            values[i] = Double.NaN; // or some default value
-        }
+  String tags = m.typetag();          // e.g., "iii", "fff", "ifs", ...
+  int n = tags.length();
+  double[] out = new double[n];
+
+  for (int i = 0; i < n; i++) {
+    char t = tags.charAt(i);
+    try {
+      switch (t) {
+        case 'i': out[i] = m.get(i).intValue();   break;  // 32-bit int
+        case 'f': out[i] = m.get(i).floatValue(); break;  // 32-bit float
+        // Some builds may support these; if not, they’ll throw and hit the catch:
+        case 'h': out[i] = (double) m.get(i).longValue();  break; // 64-bit int
+        case 'd': out[i] = m.get(i).doubleValue();         break; // 64-bit float
+        default:  out[i] = Double.NaN; // non-numeric (string, blob, etc.)
+      }
+    } catch (Exception e) {
+      out[i] = Double.NaN;
     }
-    return values;
+  }
+  return out;
 }
