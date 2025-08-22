@@ -21,6 +21,7 @@ public class phy3DModel extends PhyModel {
   private double massSize = 20.; // radius
   private double mass = 1.0;
   private double stiffness = 0.001;
+  private double damping = 0.0;
   // private double dist = 62;
   private double m_dist = 1;
   private double m_l0 = 1;
@@ -63,6 +64,12 @@ public class phy3DModel extends PhyModel {
   public void setParams(double M, double K) {
     mass = M;
     stiffness = K;
+  }
+
+  public void setParams(double M, double K, double C) {
+    mass = M;
+    stiffness = K;
+    damping = C;
   }
 
   public ArrayList<Driver3D> addDrivers(List<String> InNodes) {
@@ -164,9 +171,9 @@ public class phy3DModel extends PhyModel {
           masName2 = m_mLabel + "_" + (idx + "_" + idy + "_" + idz);
           String ln = m_iLabel + "_" + (idx + "_" + idy + "_" + idz) + "_" + (i + "_" + j + "_" + k);
           if ((j == m_dimY - 2) || (j == 0)) {
-            addInteraction(ln, new SpringDamper3D(mult * d, stiffness, 0), masName1, masName2);
+            addInteraction(ln, new SpringDamper3D(mult * d, stiffness, damping), masName1, masName2);
           } else {
-            addInteraction(ln, new SpringDamper3D(mult * d, stiffness, 0), masName1, masName2); //<>//
+            addInteraction(ln, new SpringDamper3D(mult * d, stiffness, damping), masName1, masName2); //<>//
           }
         }
       }
@@ -267,6 +274,9 @@ public class phy3DModel extends PhyModel {
       case STIFFNESS:
         this.stiffness = val;
         break;
+      case DAMPING:
+        this.damping = val;
+        break;
       default:
         System.out.println("Cannot apply param " + val + " for "
             + this + ": no " + p + " parameter");
@@ -289,6 +299,8 @@ public class phy3DModel extends PhyModel {
         return this.massSize;
       case STIFFNESS:
         return this.stiffness;
+      case DAMPING:
+        return this.damping;
       default:
         System.out.println("No " + p + " parameter found in " + this);
         return 0.;
