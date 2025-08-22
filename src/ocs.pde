@@ -93,7 +93,7 @@ void processOSCModelControllerEvents(String pattern, OscMessage msg) {
       break;
     }
 
-    case "/mass/mass": { // arg: +1 or -1
+    case "/mass/m": { // arg: +1 or -1
       controller.adjustMs(asDoubleArray(msg));
       break;
     }

@@ -41,6 +41,12 @@ def test(config_path, input_path=None, mode="us"):
     print("Testing: Shift Audio Input/Output")
     send_and_wait(client, '/shiftInOut', "x")
     send_and_wait(client, '/shiftInOut', "z")
+    print("Testing: Update masses")
+    send_and_wait(client, '/mass/m', [5,5,5])
+    print("Testing: Update Spring Stiffness")
+    send_and_wait(client, '/spring/k', [0.15, 3, 7.0])
+    print("Testing: Update Spring Damping")
+    send_and_wait(client, '/spring/c', [0.5, 0.5, 0.5])
 
 
 if __name__ == "__main__":
