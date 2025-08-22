@@ -80,6 +80,8 @@ public class ModelController {
             results[i] = config.M[i] + incrementsM[i];
         }
         config.M = results;
+        System.out.println("Changing M");
+        onModelChanged();
     }
 
     public void adjustKs(double[] incrementsK) {
@@ -88,6 +90,8 @@ public class ModelController {
             results[i] = config.K[i] + incrementsK[i];
         }
         config.K = results;
+        System.out.println("Changing K");
+        onModelChanged();
     }
 
     public void adjustCs(double[] incrementsC) {
@@ -96,6 +100,8 @@ public class ModelController {
             results[i] = config.C[i] + incrementsC[i];
         }
         config.C = results;
+        System.out.println("Changing C");
+        onModelChanged();
     }
 
     public void cycleInteractionType() {
