@@ -67,10 +67,12 @@ void subsetsCreation3D(phy3DModel model, ArrayList<String> tissueNodeNames,
   println("third springs: " + springCounts[2]);
 }
 
-void tissuePhysicalPropertiesInit(phy3DModel model, double[] nodesM, double[] nodesK, ArrayList<String> massSubsets) {
+void tissuePhysicalPropertiesInit(phy3DModel model, double[] nodesM, double[] nodesK, double [] nodesC, ArrayList<String> massSubsets) {
   // Ensure that we have the same number of nodes for masses and springs, and also match mass subsets
-  if (nodesM.length != nodesK.length || nodesM.length != massSubsets.size()) {
-    println("Error: The number of masses (M), spring constants (K), and mass subsets do not match.");
+  if (nodesM.length != nodesK.length || nodesM.length != nodesC.length || nodesM.length != massSubsets.size()) {
+    println("Error: The number of masses (M), spring constants (K), damping (C), and mass subsets do not match.");
+    println("M length: " + nodesM.length + ", K length: " + nodesK.length + ", C length: " + nodesC.length + ", subsets size: " + massSubsets.size());
+
     return;
   }
 
@@ -79,16 +81,18 @@ void tissuePhysicalPropertiesInit(phy3DModel model, double[] nodesM, double[] no
     // Fetch the current mass and stiffness values for this layer
     float currentM = (float) nodesM[i];
     float currentK = (float) nodesK[i];
+    float currentC = (float) nodesC[i];
 
     // Fetch the mass subset name from the list
     String currentMassSubset = massSubsets.get(i);
 
     // Print the physical properties being set
-    println("Setting physical properties for layer " + (i + 1) + ": M → " + currentM + " | K → " + currentK);
+    println("Setting physical properties for layer " + (i + 1) + ": M → " + currentM + " | K → " + currentK + " | C → " + currentC);
 
     // Apply mass and stiffness to the corresponding subsets
     phys.setParamForMassSubset(currentMassSubset, param.MASS, currentM);
     phys.setParamForInteractionSubset(currentMassSubset, param.STIFFNESS, currentK);
+    phys.setParamForInteractionSubset(currentMassSubset, param.DAMPING, currentC);
   }
 }
 
@@ -159,6 +163,7 @@ void createModelFromConfig() {
   int[] nPerLayer = config.numNodesPerLayer; // number of nodes per layer
   double[] nodeM = config.M;
   double[] nodeK = config.K;
+  double[] nodeC = config.C;
   int numNodes = Arrays.stream(nPerLayer).sum(); //Make sure it matches
 
   ArrayList<String> massSubsets = getMassSubsets(modelType);
@@ -178,7 +183,7 @@ void createModelFromConfig() {
   model = new phy3DModel("BioSonix" + modelType, phys.getGlobalMedium());
   model.setDim(dimX, numNodes, dimZ, 1);
   model.setGeometry(dist);
-  model.setParams(nodeM[0], nodeK[0]);
+  model.setParams(nodeM[0], nodeK[0], nodeC[0]);
   model.setMassRadius(massesRadius);
   model.setModelType(modelType);
   model.setInteractionType(config.interactionType);
@@ -194,7 +199,7 @@ void createModelFromConfig() {
   tissueNodeNames.add("m_0_" + (nPerLayer[0] + nPerLayer[1]) + "_0");
 
   subsetsCreation3D(model, tissueNodeNames, nPerLayer, dimX, dimZ, massSubsets);
-  tissuePhysicalPropertiesInit(model, nodeM, nodeK, massSubsets);
+  tissuePhysicalPropertiesInit(model, nodeM, nodeK, nodeC, massSubsets);
   //tissueNodesDefinition3D(model, tissueNodeNames);
 
   phys.mdl().addPhyModel(model);
