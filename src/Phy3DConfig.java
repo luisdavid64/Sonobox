@@ -29,6 +29,7 @@ public class Phy3DConfig {
   public int[] numNodesPerLayer;
   public double[] K;
   public double[] M;
+  public double[] C;
   public int acousticScalingFactor;
   public List<String> contributingPixels;
   public int[] stiffnessArray;
@@ -52,6 +53,7 @@ public class Phy3DConfig {
     this.numNodesPerLayer = b.numNodesPerLayer != null ? b.numNodesPerLayer.clone() : new int[0];
     this.K = b.K != null ? b.K.clone() : new double[0];
     this.M = b.M != null ? b.M.clone() : new double[0];
+    this.C = b.C != null ? b.C.clone() : new double[0];
     this.acousticScalingFactor = b.acousticScalingFactor;
     this.contributingPixels = List.copyOf(b.contributingPixels);
     this.stiffnessArray = b.stiffnessArray != null ? b.stiffnessArray.clone() : new int[0];
@@ -75,6 +77,7 @@ public class Phy3DConfig {
         .numNodesPerLayer(numNodesPerLayer)
         .K(K)
         .M(M)
+        .C(C)
         .acousticScalingFactor(acousticScalingFactor)
         .contributingPixels(contributingPixels)
         .stiffnessArray(stiffnessArray)
@@ -98,6 +101,7 @@ public class Phy3DConfig {
     private int[] numNodesPerLayer = new int[0];
     private double[] K = new double[0];
     private double[] M = new double[0];
+    private double[] C = new double[0];
     private int acousticScalingFactor = 1;
     private List<String> contributingPixels = new ArrayList<>();
     private int[] stiffnessArray = new int[0];
@@ -120,6 +124,7 @@ public class Phy3DConfig {
     public Builder numNodesPerLayer(int[] a){this.numNodesPerLayer = a != null ? a.clone() : new int[0]; return this;}
     public Builder K(double[] arr){ this.K = arr!=null?arr.clone():new double[0]; return this; }
     public Builder M(double[] arr){ this.M = arr!=null?arr.clone():new double[0]; return this; }
+    public Builder C(double[] arr){ this.C = arr!=null?arr.clone():new double[0]; return this; }
     public Builder acousticScalingFactor(int v){ this.acousticScalingFactor=v; return this; }
     public Builder contributingPixels(Collection<String> a){ this.contributingPixels = new ArrayList<>(a); return this; }
     public Builder stiffnessArray(int[] a){ this.stiffnessArray = a!=null?a.clone():new int[0]; return this; }
@@ -158,6 +163,7 @@ public class Phy3DConfig {
       JsonObject par = root.getAsJsonObject("parameters");
       if (par.has("K")) b.K(arrayD(par.getAsJsonArray("K")));
       if (par.has("M")) b.M(arrayD(par.getAsJsonArray("M")));
+      if (par.has("C")) b.C(arrayD(par.getAsJsonArray("C")));
     }
 
     // sonification_set_up
@@ -208,6 +214,7 @@ public class Phy3DConfig {
     JsonObject par = new JsonObject();
     par.add("K", toJsonArray(K));
     par.add("M", toJsonArray(M));
+    par.add("C", toJsonArray(C));
     root.add("parameters", par);
 
     JsonObject su = new JsonObject();
