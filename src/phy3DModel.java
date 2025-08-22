@@ -164,9 +164,9 @@ public class phy3DModel extends PhyModel {
           masName2 = m_mLabel + "_" + (idx + "_" + idy + "_" + idz);
           String ln = m_iLabel + "_" + (idx + "_" + idy + "_" + idz) + "_" + (i + "_" + j + "_" + k);
           if ((j == m_dimY - 2) || (j == 0)) {
-            addInteraction(ln, new Spring3D(mult * d, stiffness), masName1, masName2);
+            addInteraction(ln, new SpringDamper3D(mult * d, stiffness, 0), masName1, masName2);
           } else {
-            addInteraction(ln, new Spring3D(mult * d, stiffness), masName1, masName2); //<>//
+            addInteraction(ln, new SpringDamper3D(mult * d, stiffness, 0), masName1, masName2); //<>//
           }
         }
       }
