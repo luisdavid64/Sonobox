@@ -6,6 +6,7 @@ boolean downPressed = false;
 boolean cPressed = false;
 boolean dPressed = false;
 boolean rPressed = false;
+boolean qPressed = false;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ void keyPressed() {
 
   if (key == 'c' || key == 'C') cPressed = true;
   if (key == 'r' || key == 'R') rPressed = true;
+  if (key == 'q' || key == 'Q') qPressed = true;
   if (key == 'd' || key == 'D') dPressed = true;
   if (key == 'y' || key == 'Y') yPressed = true;
   if (key == 'x' || key == 'X') xPressed = true;
@@ -49,6 +51,7 @@ void keyReleased() {
   // combo tracking (optional)
   if (key == 'c' || key == 'C') cPressed = false;
   if (key == 'r' || key == 'R') rPressed = false;
+  if (key == 'q' || key == 'Q') qPressed = false;
   if (key == 'd' || key == 'D') dPressed = false;
   if (key == 'y' || key == 'Y') yPressed = false;
   if (key == 'x' || key == 'X') xPressed = false;
@@ -76,6 +79,10 @@ void checkModelChanges() {
 
   if (rPressed && (upPressed || downPressed)) {
     controller.adjustRadius(upPressed ? 1 : -1);
+  }
+  
+  if (qPressed && (upPressed || downPressed)) {
+    controller.adjustResolution(upPressed ? 1 : -1);
   }
   
   if (cPressed) {

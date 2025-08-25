@@ -22,6 +22,8 @@ public class ModelController {
     final ResetHook resetHook; // required to re-init after changes
     final MessageSink messages; // optional status messages (can be null)
     double[] baselineW;
+    int baseDimX, baseDimY, baseDimZ;
+    float baselineDist = 1;
 
     public ModelController(Phy3DConfig config, ResetHook resetHook, MessageSink messages) {
         this.config = config;
@@ -37,6 +39,10 @@ public class ModelController {
         for (int i = 0; i < layers.length; i++) {
             baselineW[i] = (tot == 0) ? 1.0 / layers.length : (double) layers[i] / tot;
         }
+        baselineDist = config.dist;
+        baseDimX = config.dimX;
+        baseDimY = config.dimY;
+        baseDimZ = config.dimZ;
     }
 
     // --- Public high-level API: performs action and handles post-change duties ---
@@ -121,6 +127,27 @@ public class ModelController {
         config.listenerNodes = newListeners;
         if (messages != null)
             messages.show("Shifted driver and listener nodes on " + ax + " axis.");
+        onModelChanged();
+    }
+
+    public void adjustResolution(int delta) {
+        int oldY = config.dimY;
+        float newDist = config.dist + delta;
+        if (newDist <= 0f) newDist = 1f; // guard; choose your own minimum
+
+        config.dist = newDist;
+
+        // Inverse scaling: keep overall size consistent with the initial setup
+        float scale = newDist / baselineDist;
+
+        config.dimY = 0;
+        for(int i = 0; i < config.numNodesPerLayer.length; i++) {
+            config.numNodesPerLayer[i] = (int) Math.max(1, Math.round(baseDimY * scale * baselineW[i]));
+            config.dimY += config.numNodesPerLayer[i];
+        }
+        //sum numNodesPerLayer into dimY
+        System.err.println("New dimensions: X=" + config.dimX + ", Y=" + config.dimY + ", Z=" + config.dimZ);
+
         onModelChanged();
     }
 
