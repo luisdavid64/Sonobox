@@ -2,6 +2,7 @@
   "data_dir": "data/BioSonix/abstract-model/target-and-sensitive/1/only-target-in-big/data",
   "use_norm_data": false,
   "model": "3D",
+  "global_friction": 0.25,
   "geometry": {
     "numLayers": 3,
     "numNodesPerLayer" : [3,13,11],
