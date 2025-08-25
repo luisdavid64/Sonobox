@@ -99,7 +99,7 @@ void checkModelChanges() {
   }
 
   if (fPressed && (upPressed || downPressed)) {
-    controller.adjustGlobalFriction(0, upPressed ? 4 : 1/4);
+    controller.adjustGlobalFriction(0, upPressed ? 1.1 : 0.9);
   }
 }
 

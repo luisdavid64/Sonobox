@@ -188,6 +188,9 @@ void createModelFromConfig() {
   model.setMassRadius(massesRadius);
   model.setModelType(modelType);
   model.setInteractionType(config.interactionType);
+  for (Bound b : config.bounds) {
+    model.addBoundaryCondition(b);
+  }
   model.generate();
   model.translate(0, -150, 0);
 

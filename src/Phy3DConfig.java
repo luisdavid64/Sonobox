@@ -119,7 +119,7 @@ public class Phy3DConfig {
     public Builder neighborSpan(int s){ this.neighborSpan=s; return this; }
     public Builder dist(float d){ this.dist=d; return this; }
     public Builder massRadius(float r){ this.massRadius=r; return this; }
-    public Builder bounds(EnumSet<Bound> b){ this.bounds=b.clone(); return this; }
+    public Builder bounds(EnumSet<Bound> b){ this.bounds= (b.isEmpty()) ? EnumSet.noneOf(Bound.class) : b.clone(); return this; }
     public Builder addBound(Bound b){ this.bounds.add(b); return this; }
     public Builder drivers(Collection<String> a){ this.driverNodes = new ArrayList<>(a); return this; }
     public Builder listeners(Collection<String> a){ this.listenerNodes = new ArrayList<>(a); return this; }
@@ -165,6 +165,9 @@ public class Phy3DConfig {
       String it = g.get("interactionType").getAsString();
       b.interactionType(InteractionType.valueOf(it.toUpperCase()));
     }
+
+    // bounds
+    if (root.has("bounds")) {b.bounds(boundSet(root.getAsJsonArray("bounds")));}
 
     // parameters
     if (root.has("parameters")){
@@ -216,6 +219,7 @@ public class Phy3DConfig {
     g.add("numNodesPerLayer", nnpl);
     g.addProperty("distance", dist);
     g.addProperty("massesRadius", massRadius);
+    g.add("bounds", toJsonArray(bounds));
     g.addProperty("dy", dimY);
     g.addProperty("dx", dimX);
     g.addProperty("dz", dimZ);
@@ -271,7 +275,14 @@ public class Phy3DConfig {
     for (JsonElement e : arr) o.add(e.getAsString());
     return o;
   }
+
+  private static EnumSet<Bound> boundSet(JsonArray arr){
+    EnumSet<Bound> o = EnumSet.noneOf(Bound.class); 
+    for (JsonElement e : arr) o.add(Bound.valueOf(e.getAsString()));
+    return o;
+  }
   private static JsonArray toJsonArray(double[] a){ JsonArray ja = new JsonArray(); for (double v:a) ja.add(v); return ja; }
   private static JsonArray toJsonArray(int[] a){ JsonArray ja = new JsonArray(); for (int v:a) ja.add(v); return ja; }
   private static JsonArray toJsonArray(List<String> a){ JsonArray ja = new JsonArray(); for (String v:a) ja.add(v); return ja; }
+  private static JsonArray toJsonArray(EnumSet<Bound> a){ JsonArray ja = new JsonArray(); for (Bound v:a) ja.add(v.name()); return ja; }
 }
