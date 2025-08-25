@@ -119,6 +119,12 @@ void processOSCModelControllerEvents(String pattern, OscMessage msg) {
       break;
     }
 
+    case "friction": {
+      float delta = asFloat(msg, 0, 0);
+      float mult = asFloat(msg, 1, 1);
+      controller.adjustGlobalFriction(delta, mult);
+    }
+
     // -------------------- NON-CONTROLLER UTILITIES (OPTIONAL) --------------------
 
     case "/config/save": { // optional string arg: base path

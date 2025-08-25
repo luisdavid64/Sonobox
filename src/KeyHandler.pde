@@ -7,6 +7,7 @@ boolean cPressed = false;
 boolean dPressed = false;
 boolean rPressed = false;
 boolean qPressed = false;
+boolean fPressed = false;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -41,6 +42,7 @@ void keyPressed() {
   if (key == 'y' || key == 'Y') yPressed = true;
   if (key == 'x' || key == 'X') xPressed = true;
   if (key == 'z' || key == 'Z') zPressed = true;
+  if (key == 'f' || key == 'F') fPressed = true;
   if (key == CODED && keyCode == UP) upPressed = true;
   if (key == CODED && keyCode == DOWN) downPressed = true;
   checkModelChanges();
@@ -56,6 +58,7 @@ void keyReleased() {
   if (key == 'y' || key == 'Y') yPressed = false;
   if (key == 'x' || key == 'X') xPressed = false;
   if (key == 'z' || key == 'Z') zPressed = false;
+  if (key == 'f' || key == 'F') fPressed = false;
   if (key == CODED && keyCode == UP) upPressed = false;
   if (key == CODED && keyCode == DOWN) downPressed = false;
 }
@@ -93,6 +96,10 @@ void checkModelChanges() {
     char axis = (xPressed ? 'X' : 'Z');
     controller.shiftDriversListeners(axis);
     produceRenderedMessage("Shifted driver and listener nodes on " + axis + " axis.");
+  }
+
+  if (fPressed && (upPressed || downPressed)) {
+    controller.adjustGlobalFriction(0, upPressed ? 4 : 1/4);
   }
 }
 

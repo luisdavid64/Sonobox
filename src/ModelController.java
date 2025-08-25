@@ -151,6 +151,17 @@ public class ModelController {
         onModelChanged();
     }
 
+    public void adjustGlobalFriction(int delta, int mult) {
+        config.globalFriction *= mult;
+        config.globalFriction += delta;
+        if (config.globalFriction < 0)
+            config.globalFriction = 0;
+        System.out.println("Global friction now: " + config.globalFriction);
+        onModelChanged();
+    }
+
+    public void adjustGlobalFriction(int mult) {adjustGlobalFriction(0,mult);}
+
     // --- Internal helpers ---
     private void onModelChanged() {
         enforceDimMinimums();

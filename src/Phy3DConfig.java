@@ -17,6 +17,9 @@ public class Phy3DConfig {
   public float massRadius;
   public EnumSet<Bound> bounds;
 
+  // Add globalFriction
+  public float globalFriction = 0.0f;
+
   // IO (engine-ready lists)
   public List<String> driverNodes;
   public List<String> listenerNodes;
@@ -45,7 +48,7 @@ public class Phy3DConfig {
     this.bounds = b.bounds.clone();
     this.driverNodes = List.copyOf(b.driverNodes);
     this.listenerNodes = List.copyOf(b.listenerNodes);
-
+    this.globalFriction = b.globalFriction;
     this.dataDir = b.dataDir;
     this.useNormData = b.useNormData;
     this.modelDim = b.modelDim;
@@ -82,7 +85,8 @@ public class Phy3DConfig {
         .acousticScalingFactor(acousticScalingFactor)
         .contributingPixels(contributingPixels)
         .stiffnessArray(stiffnessArray)
-        .interactionType(interactionType);
+        .interactionType(interactionType)
+        .globalFriction(globalFriction);
   }
 
   public static final class Builder {
@@ -94,6 +98,8 @@ public class Phy3DConfig {
     private EnumSet<Bound> bounds = EnumSet.noneOf(Bound.class);
     private List<String> driverNodes = new ArrayList<>();
     private List<String> listenerNodes = new ArrayList<>();
+
+    private float globalFriction = 0.0f;
 
     private String dataDir = "";
     private boolean useNormData = false;
@@ -130,6 +136,7 @@ public class Phy3DConfig {
     public Builder contributingPixels(Collection<String> a){ this.contributingPixels = new ArrayList<>(a); return this; }
     public Builder stiffnessArray(int[] a){ this.stiffnessArray = a!=null?a.clone():new int[0]; return this; }
     public Builder interactionType(InteractionType t) { this.interactionType = t; return this; }
+    public Builder globalFriction(float f) { this.globalFriction = f; return this; }
 
     public Phy3DConfig build(){ return new Phy3DConfig(this); }
   }
@@ -178,6 +185,8 @@ public class Phy3DConfig {
       if (su.has("listeners")) b.listeners(arrayS(su.getAsJsonArray("listeners")));
     }
 
+    if (root.has("global_friction")) b.globalFriction(root.get("global_friction").getAsFloat());
+
 
     return b;
   }
@@ -197,6 +206,7 @@ public class Phy3DConfig {
     JsonObject root = new JsonObject();
     root.addProperty("data_dir", dataDir);
     root.addProperty("use_norm_data", useNormData);
+    root.addProperty("global_friction", globalFriction);
     root.addProperty("model", modelDim);
 
     JsonObject g = new JsonObject();
