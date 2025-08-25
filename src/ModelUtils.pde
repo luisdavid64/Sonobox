@@ -153,6 +153,7 @@ void resetModel() {
     model = null;
   }
   // We update the config and recreate the model
+  phys.setGlobalFriction(config.globalFriction);
   createModelFromConfig();
   resetAudioClient();
 }

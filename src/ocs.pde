@@ -172,7 +172,6 @@ double[] asDoubleArray(OscMessage m) {
       switch (t) {
         case 'i': out[i] = m.get(i).intValue();   break;  // 32-bit int
         case 'f': out[i] = m.get(i).floatValue(); break;  // 32-bit float
-        // Some builds may support these; if not, they’ll throw and hit the catch:
         case 'h': out[i] = (double) m.get(i).longValue();  break; // 64-bit int
         case 'd': out[i] = m.get(i).doubleValue();         break; // 64-bit float
         default:  out[i] = Double.NaN; // non-numeric (string, blob, etc.)

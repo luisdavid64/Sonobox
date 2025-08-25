@@ -151,7 +151,7 @@ public class ModelController {
         onModelChanged();
     }
 
-    public void adjustGlobalFriction(int delta, int mult) {
+    public void adjustGlobalFriction(float delta, float mult) {
         config.globalFriction *= mult;
         config.globalFriction += delta;
         if (config.globalFriction < 0)
