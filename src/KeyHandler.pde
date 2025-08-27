@@ -16,7 +16,7 @@ void keyPressed() {
   if (Character.isDigit(key)) {
     int index = Character.getNumericValue(key) - 1;
     if (index >= 0 && index < drivers.size()) {
-      float = 3.0;
+      float f = 3.0;
       Driver3D driver = drivers.get(index);
       driver.apdplyFrc(f, f, f);
       // driver.releaseADSR();

@@ -197,7 +197,11 @@ void createModelFromConfig() {
   drivers = model.addDrivers(config.driverNodes);
   listeners = model.addListeners(config.listenerNodes);
 
-  // ADSR Model: Would it be useful
+  int A = 0;                   // 3 ms
+  int D = 1200;                   // 10 ms
+  int R = 0;                   // 20 ms
+
+  // ADSR Model for drivers: neccesary
   for (Driver3D d : drivers) {
       d.setADSR(A, D, 0, R)                  // attack, decay, sustain, release
       .setCurve(Driver3D.Curve.HANN);         // optional shaping
