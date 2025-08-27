@@ -18,7 +18,7 @@ void keyPressed() {
     if (index >= 0 && index < drivers.size()) {
       float f = 3.0;
       Driver3D driver = drivers.get(index);
-      driver.apdplyFrc(f, f, f);
+      driver.applyFrc(f, f, f);
       // driver.releaseADSR();
       // driver.triggerADSR(f,f,f);
       println("PLAYING driver[" + index + "] -> " + driver.getName());
