@@ -246,11 +246,26 @@ public class Phy3DConfig {
     return root;
   }
 
-  public void writeProcessingJson(Path path) {
+  public boolean writeProcessingJson(Path path) {
+    System.out.println("Writing Processing JSON to " + path);
     Gson gson = new GsonBuilder().setPrettyPrinting().create();
-    try (Writer w = Files.newBufferedWriter(path)) { gson.toJson(toProcessingJson(), w); }
-    catch (Exception ex) {
-      throw new RuntimeException("Failed to write Processing JSON to " + path + ": " + ex.getMessage(), ex);
+    try {
+      // Ensure parent dirs exist
+      Path parent = path.getParent();
+      if (parent != null) {
+        Files.createDirectories(parent);
+      }
+      // Write atomically to reduce corruption risk
+      Path tmp = path.resolveSibling(path.getFileName() + ".tmp");
+      try (Writer w = Files.newBufferedWriter(tmp)) {
+        gson.toJson(toProcessingJson(), w);
+      }
+      Files.move(tmp, path, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+      return true;
+    } catch (Exception ex) {
+      System.err.println("Failed to write Processing JSON to " + path);
+      ex.printStackTrace();
+      return false;
     }
   }
 
