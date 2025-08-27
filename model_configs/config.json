@@ -3,6 +3,7 @@
   "use_norm_data": false,
   "model": "3D",
   "global_friction": 0.25,
+  "bounds": [],
   "geometry": {
     "numLayers": 3,
     "numNodesPerLayer" : [3,13,11],
