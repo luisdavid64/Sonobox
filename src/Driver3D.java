@@ -126,7 +126,7 @@ public class Driver3D extends InOut {
         if (m_state == EnvState.IDLE && m_rampActive) {
             m_steps++;
             m_currentForce.set(m_targetForce).mult((double)m_steps/(double)m_rampSteps);
-            applyFrc(m_currentForce);
+            this.applyFrc(m_currentForce);
             if (m_steps > m_rampSteps) m_rampActive = false;
         }
     }
