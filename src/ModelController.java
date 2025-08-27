@@ -139,22 +139,20 @@ public class ModelController {
         onModelChanged();
     }
 
-    public void adjustResolution(int delta) {
-        int oldY = config.dimY;
-        float newDist = config.dist + delta;
-        if (newDist <= 0f) newDist = 1f; // guard; choose your own minimum
+    public void adjustResolution(float multiplier) {
+        if (multiplier <= 0f) multiplier = 1f; // guard; choose your own minimum
 
+        float newDist = config.dist * multiplier;
         config.dist = newDist;
 
         // Inverse scaling: keep overall size consistent with the initial setup
         float scale = newDist / baselineDist;
 
         config.dimY = 0;
-        for(int i = 0; i < config.numNodesPerLayer.length; i++) {
+        for (int i = 0; i < config.numNodesPerLayer.length; i++) {
             config.numNodesPerLayer[i] = (int) Math.max(1, Math.round(baseDimY * scale * baselineW[i]));
             config.dimY += config.numNodesPerLayer[i];
         }
-        //sum numNodesPerLayer into dimY
         System.err.println("New dimensions: X=" + config.dimX + ", Y=" + config.dimY + ", Z=" + config.dimZ);
 
         onModelChanged();
