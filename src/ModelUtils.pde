@@ -197,6 +197,12 @@ void createModelFromConfig() {
   drivers = model.addDrivers(config.driverNodes);
   listeners = model.addListeners(config.listenerNodes);
 
+  // ADSR Model: Would it be useful
+  for (Driver3D d : drivers) {
+      d.setADSR(A, D, 0, R)                  // attack, decay, sustain, release
+      .setCurve(Driver3D.Curve.HANN);         // optional shaping
+  }
+
   tissueNodeNames = new ArrayList<String>();
   tissueNodeNames.add("m_0_0_0");
   tissueNodeNames.add("m_0_" + nPerLayer[0] + "_0");
