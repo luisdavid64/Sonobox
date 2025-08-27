@@ -172,8 +172,56 @@ public class ModelController {
     // --- Internal helpers ---
     private void onModelChanged() {
         enforceDimMinimums();
+        checkDriversAndListenersAfterAdjustment();
         if (resetHook != null)
             resetHook.run();
+    }
+
+    private void checkDriversAndListenersAfterAdjustment() {
+        // Ensure lists are mutable before removing
+        if (!(config.driverNodes instanceof ArrayList)) {
+            config.driverNodes = new ArrayList<>(config.driverNodes);
+        }
+        if (!(config.listenerNodes instanceof ArrayList)) {
+            config.listenerNodes = new ArrayList<>(config.listenerNodes);
+        }
+
+        // Removes drivers and listeners whose indices exceed the current dimensions.
+        List<String> driversToRemove = new ArrayList<>();
+        for (String driverName : config.driverNodes) {
+            try {
+                String[] parts = driverName.split("_");
+                if (parts.length != 4) continue;
+                int i = Integer.parseInt(parts[1]);
+                int j = Integer.parseInt(parts[2]);
+                int k = Integer.parseInt(parts[3]);
+                if (i >= config.dimX || j >= config.dimY || k >= config.dimZ) {
+                    driversToRemove.add(driverName);
+                }
+            } catch (Exception e) {
+                // Ignore malformed names
+                continue;
+            }
+        }
+        config.driverNodes.removeAll(driversToRemove);
+
+        List<String> listenersToRemove = new ArrayList<>();
+        for (String listenerName : config.listenerNodes) {
+            try {
+                String[] parts = listenerName.split("_");
+                if (parts.length != 4) continue;
+                int i = Integer.parseInt(parts[1]);
+                int j = Integer.parseInt(parts[2]);
+                int k = Integer.parseInt(parts[3]);
+                if (i >= config.dimX || j >= config.dimY || k >= config.dimZ) {
+                    listenersToRemove.add(listenerName);
+                }
+            } catch (Exception e) {
+                // Ignore malformed names
+                continue;
+            }
+        }
+        config.listenerNodes.removeAll(listenersToRemove);
     }
 
     private void enforceDimMinimums() {
