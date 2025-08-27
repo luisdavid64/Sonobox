@@ -49,7 +49,8 @@ def test(config_path, input_path=None, mode="us"):
     send_and_wait(client, '/spring/c', [0.5, 0.5, 0.5])
     print("Testing: Set Interaction Type")
     send_and_wait(client, '/interaction/set', "DILATED2")
-
+    print("Testing: Save mode to path")
+    send_and_wait(client, '/config/save', "/Users/luisreyes/Sonify/SonoBox/ex/2.json")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
