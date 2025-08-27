@@ -129,6 +129,12 @@ void processOSCModelControllerEvents(String pattern, OscMessage msg) {
       controller.adjustGlobalFriction(delta, mult);
     }
 
+    case "resolution": {
+      float mult = asFloat(msg, 0.5, 2);
+      controller.adjustResolution(mult);
+      break;
+    }
+
     // -------------------- NON-CONTROLLER UTILITIES (OPTIONAL) --------------------
 
     case "/config/save": { // optional string arg: base path
