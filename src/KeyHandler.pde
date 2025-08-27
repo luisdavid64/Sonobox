@@ -87,7 +87,7 @@ void checkModelChanges() {
   }
   
   if (qPressed && (upPressed || downPressed)) {
-    controller.adjustResolution(upPressed ? 1 : -1);
+    controller.adjustResolution(upPressed ? 2 : 0.5);
   }
   
   if (cPressed) {
