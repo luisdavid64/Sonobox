@@ -150,7 +150,7 @@ public class ModelController {
 
         config.dimY = 0;
         for (int i = 0; i < config.numNodesPerLayer.length; i++) {
-            config.numNodesPerLayer[i] = (int) Math.max(1, Math.round(baseDimY * scale * baselineW[i]));
+            config.numNodesPerLayer[i] = (int) Math.max(1, Math.round(baseDimY * baselineW[i] / scale));
             config.dimY += config.numNodesPerLayer[i];
         }
         System.err.println("New dimensions: X=" + config.dimX + ", Y=" + config.dimY + ", Z=" + config.dimZ);
