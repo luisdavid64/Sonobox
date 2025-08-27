@@ -112,6 +112,10 @@ void processOSCModelControllerEvents(String pattern, OscMessage msg) {
       controller.cycleInteractionType();
       break;
     }
+    case "/interaction/set": { // no args
+      controller.setInteractionType(asString(msg, 0, ""));
+      break;
+    }
 
     case "/shiftInOut": { // arg: "X" or "Z"
       char axis = axisChar(msg, 0, 'X');
