@@ -104,7 +104,7 @@ void processOSCModelControllerEvents(String pattern, OscMessage msg) {
     }
 
     case "/spring/c": { // arg: +1 or -1
-      controller.adjustKs(asDoubleArray(msg));
+      controller.adjustCs(asDoubleArray(msg));
       break;
     }
 
