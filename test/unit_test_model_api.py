@@ -47,6 +47,8 @@ def test(config_path, input_path=None, mode="us"):
     send_and_wait(client, '/spring/k', [0.15, 3, 7.0])
     print("Testing: Update Spring Damping")
     send_and_wait(client, '/spring/c', [0.5, 0.5, 0.5])
+    print("Testing: Set Interaction Type")
+    send_and_wait(client, '/interaction/set', "DILATED2")
 
 
 if __name__ == "__main__":

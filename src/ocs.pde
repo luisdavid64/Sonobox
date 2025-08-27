@@ -113,7 +113,7 @@ void processOSCModelControllerEvents(String pattern, OscMessage msg) {
       break;
     }
     case "/interaction/set": { // no args
-      controller.setInteractionType(asString(msg, 0, ""));
+      controller.setInteractionType(msg.get(0).stringValue());
       break;
     }
 

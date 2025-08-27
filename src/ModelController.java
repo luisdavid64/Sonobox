@@ -117,6 +117,15 @@ public class ModelController {
             messages.show(config.interactionType.name());
         onModelChanged();
     }
+    public void setInteractionType(String typeStr) {
+        InteractionType type = InteractionType.valueOf(typeStr);
+        if (type != null) {
+            config.interactionType = type;
+            if (messages != null)
+                messages.show(config.interactionType.name());
+            onModelChanged();
+        }
+    }
 
     public void shiftDriversListeners(char axis) {
         // axis: 'X' or 'Z'
