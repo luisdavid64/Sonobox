@@ -61,7 +61,35 @@ void oscEvent(OscMessage msg) {
     phys.setParamForMassSubset(setName, param.RADIUS, setRadius);
     phys.setParamForMassSubset(setName, param.MASS, setMass);
     break;
+
+  case "/record/start": {
+    String savePath = "default_recording.wav"; // fallback
+    if (msg.arguments().length > 0) {
+      savePath = msg.get(0).stringValue();
+    }
+    if (!isRecording) {
+      // If a recorder already exists, close it before creating a new one
+      if (recorder != null && recorder.isRecording()) {
+        recorder.endRecord();
+      }
+      recorder = minim.createRecorder(out, savePath, true);
+      recorder.beginRecord();
+      isRecording = true;
+      println("Recording started. Saving to: " + savePath);
+    }
+    break;
   }
+
+  case "/record/end": {
+    if (isRecording && recorder != null) {
+      recorder.endRecord();
+      isRecording = false;
+      println("Recording stopped.");
+    }
+    break;
+  }
+  }
+
   // OSC ModelController API usage
   processOSCModelControllerEvents(pattern, msg);
     
@@ -144,6 +172,7 @@ void processOSCModelControllerEvents(String pattern, OscMessage msg) {
       config.writeProcessingJson(java.nio.file.Paths.get(name));
       System.out.println("Saved current configuration to Processing JSON format.");
       break;
+    }
 
     case "/config/reset": { // optional string arg: base path
       resetConfig();

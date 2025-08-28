@@ -8,7 +8,7 @@ import time
 import numpy as np
 
 
-def transmitter(config_path, input_path=None, mode="us"):
+def transmitter(config_path, input_path=None, mode="us", client=None):
     params = Parameters(config_path)
     inDataDir = input_path
     load_data, load_data_norm = get_loaders(mode)
@@ -48,9 +48,10 @@ def transmitter(config_path, input_path=None, mode="us"):
     forces = compute_forces_vec(u_data, stiffness_values)
 
     # UDP client setup
-    localhost_ip = "127.0.0.1"
-    processing_port_1d_model = 12001
-    client = SimpleUDPClient(localhost_ip, processing_port_1d_model)
+    if client is None:
+        localhost_ip = "127.0.0.1"
+        processing_port_1d_model = 12001
+        client = SimpleUDPClient(localhost_ip, processing_port_1d_model)
 
     # EXCITATION
     start_time = time.time()
