@@ -74,6 +74,8 @@ void setup() {
   cam.setMinimumDistance(50);
   cam.setMaximumDistance(1000);
   cam.setDistance(400);
+  // Audio
+  setAudioClient();
 
   // Physics and config
   setConfig();
@@ -95,8 +97,6 @@ void setup() {
   renderer.displayForceVectors(true);
 
 
-  // Audio
-  setAudioClient();
   // Rendering rate & text setup
   frameRate(displayRate);
   textFont(createFont("Helvetica", 120));
@@ -109,6 +109,16 @@ void draw() {
   background(0);
   stroke(255);
   renderer.renderScene(phys);
+
+  // int amplitude_ = -2000;
+  // int subsample_ = 20;
+  // int start = 15;
+  
+  //  for(int i = 0; i < in.left.size()-1; i++)
+  //  {
+  //  line(i / 20 + start, 435 + in.left.get(i)*amplitude_, (i+1)/subsample_ +start, 435 + in.left.get(i+1)*amplitude_);
+  //  line(i / 20 + start, 500 + in.right.get(i)*amplitude_, (i+1)/20 + start, 500 + in.right.get(i+1)*amplitude_);
+  //  }
 
   // START TRIGGER DISPLAY:: Show the trigger text for a set duration
   if (showText && millis() - textTimer < displayDuration) {
