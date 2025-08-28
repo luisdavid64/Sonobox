@@ -6,6 +6,7 @@
 
 import argparse
 from http import client
+import os
 import time
 from pythonosc.udp_client import SimpleUDPClient
 from transmitter import transmitter
@@ -21,6 +22,32 @@ def transmit_and_record(client: SimpleUDPClient, config_path, input_path, mode):
     send_and_wait(client, "/record/end", "")
     pass
 
+
+def folder_generator(base, phase):
+    folder_name = f"{base}/{phase}"
+    os.makedirs(folder_name, exist_ok=True)
+    return folder_name
+
+PHASES_DYNAMICS = [
+    "CHANGE_DAMPING",
+    "CHANGE_STIFFNESS",
+    "CHANGE MASSES"
+    "CHANGE_FRICTION",
+    "CHANGE_INTERACTIONS"
+    
+]
+
+PHASES_GEOMETRY = [
+    "CHANGE_RESOLUTION",
+    "ADD_X",
+    "ADD_Z",
+    "MOVE_DRIVERS",
+    "CHANGE_MASSES",
+    "CHANGE_STIFFNESSES",
+    "CHANGE_INTERACTIONS",
+    "FRICTION"
+]
+
 def data_generator(config_path, input_path, mode):
     # Step one
     # Transmit with each modification
@@ -29,8 +56,12 @@ def data_generator(config_path, input_path, mode):
     localhost_ip = "127.0.0.1"
     processing_port_1d_model = 12001
     client = SimpleUDPClient(localhost_ip, processing_port_1d_model)
+    
     # Send transmission and record it
     transmit_and_record(client, config_path, input_path, mode)
+    
+    # Step one
+    
     pass
 
 if __name__ == "__main__":
