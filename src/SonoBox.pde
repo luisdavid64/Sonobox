@@ -36,7 +36,9 @@ import miPhysics.Engine.InteractionConstants.*;
 PhysicsContext phys;
 PhyModel mdl;
 ModelRenderer renderer;
-miPhyAudioClient audioStreamHandler;
+miTappedPhyAudioClient audioStreamHandler;
+WavWriter wav;
+miTappedPhyAudioClient.AudioTap recTap;
 Phy3DConfig config; // loading json config parameters
 phy3DModel model;
 ModelController controller;

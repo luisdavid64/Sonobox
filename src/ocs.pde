@@ -67,25 +67,12 @@ void oscEvent(OscMessage msg) {
     if (msg.arguments().length > 0) {
       savePath = msg.get(0).stringValue();
     }
-    if (!isRecording) {
-      // If a recorder already exists, close it before creating a new one
-      if (recorder != null && recorder.isRecording()) {
-        recorder.endRecord();
-      }
-      recorder = minim.createRecorder(in, savePath, false);
-      recorder.beginRecord();
-      isRecording = true;
-      println("Recording started. Saving to: " + savePath);
-    }
+    startRecording(savePath);
     break;
   }
 
   case "/record/end": {
-    if (isRecording && recorder != null) {
-      recorder.endRecord();
-      isRecording = false;
-      println("Recording stopped and saved.");
-    }
+    endRecording();
     break;
   }
   }
@@ -224,4 +211,30 @@ double[] asDoubleArray(OscMessage m) {
     }
   }
   return out;
+}
+
+void startRecording(String path) {
+  try {
+    File f = new File(path);
+    wav = new WavWriter(f, /*sr*/44100, /*channels*/2);
+    wav.start();
+    recTap = (block, nframes, sr, t) -> {
+      try { wav.append(block, nframes); } catch (IOException e) { /* log */ }
+    };
+    audioStreamHandler.addTap(recTap);
+    println("Recording started: " + f.getAbsolutePath());
+  } catch (IOException e) {
+    println("Failed to start recording: " + e.getMessage());
+  }
+}
+
+void endRecording() {
+  if (recTap != null) audioStreamHandler.removeTap(recTap);
+  recTap = null;
+  try {
+    if (wav != null) { wav.stop(); println("Recording stopped and saved."); }
+  } catch (IOException e) {
+    println("Failed to finalize WAV: " + e.getMessage());
+  }
+  wav = null;
 }

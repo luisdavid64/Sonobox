@@ -3,7 +3,7 @@ public void setAudioClient() {
     audioStreamHandler.shutdown();
     audioStreamHandler = null;
   }
-  audioStreamHandler = miPhyAudioClient.miPhyClassic(44100, 128, 0, 2, phys);
+  audioStreamHandler = miTappedPhyAudioClient.miPhyClassic(44100, 128, 0, 2, phys);
   audioStreamHandler.setListenerAxis(listenerAxis.Y);
   audioStreamHandler.setGain(gain);
   audioStreamHandler.start();
