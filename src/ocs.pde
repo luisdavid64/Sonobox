@@ -130,7 +130,7 @@ void processOSCModelControllerEvents(String pattern, OscMessage msg) {
     }
 
     case "resolution": {
-      float mult = asFloat(msg, 0.5, 2);
+      float mult = asFloat(msg, 1, 2);
       controller.adjustResolution(mult);
       break;
     }
