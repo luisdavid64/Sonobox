@@ -74,8 +74,6 @@ void setup() {
   cam.setMinimumDistance(50);
   cam.setMaximumDistance(1000);
   cam.setDistance(400);
-  // Audio
-  setAudioClient();
 
   // Physics and config
   setConfig();
@@ -95,6 +93,8 @@ void setup() {
   renderer.setStrainColor(interType.SPRINGDAMPER3D, 105, 100, 200, 255);
   renderer.displayIntersectionVolumes(true);
   renderer.displayForceVectors(true);
+  // Audio
+  setAudioClient();
 
 
   // Rendering rate & text setup
