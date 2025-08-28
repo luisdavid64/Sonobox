@@ -144,6 +144,10 @@ void processOSCModelControllerEvents(String pattern, OscMessage msg) {
       config.writeProcessingJson(java.nio.file.Paths.get(name));
       System.out.println("Saved current configuration to Processing JSON format.");
       break;
+
+    case "/config/reset": { // optional string arg: base path
+      resetConfig();
+      break;
     }
   }
 }

@@ -76,12 +76,7 @@ void setup() {
   cam.setDistance(400);
 
   // Physics and config
-  String absPath = getConfig();
-  println("Loading config from: " + absPath);
-  var cfgBuilder = Phy3DConfig.fromProcessingJsonFile(Paths.get(absPath));
-  config = cfgBuilder.build();
-  phys = new PhysicsContext(44100);
-  phys.setGlobalFriction(friction);
+  setConfig()
 
   // Create model from config
   createModelFromConfig();

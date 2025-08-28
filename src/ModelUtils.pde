@@ -158,6 +158,20 @@ void resetModel() {
   resetAudioClient();
 }
 
+void resetConfig() {
+  String absPath = getConfig();
+  println("Loading config from: " + absPath);
+  var cfgBuilder = Phy3DConfig.fromProcessingJsonFile(Paths.get(absPath));
+  config = cfgBuilder.build();
+  phys = new PhysicsContext(44100);
+  phys.setGlobalFriction(friction);
+}
+
+// Alias
+void setConfig() {
+  resetConfig()
+}
+
 void createModelFromConfig() {
   String modelType = config.modelDim; // "1D", "2D", or "3D"
   println("IMPLEMENTING A "+ modelType +" TOPOLOGY FOR THE SOUND MODEL");
