@@ -5,6 +5,7 @@
 """
 
 import argparse
+from http import client
 import time
 from pythonosc.udp_client import SimpleUDPClient
 from transmitter import transmitter
@@ -14,17 +15,22 @@ def send_and_wait(client : SimpleUDPClient, address,value, wait_time=0.5):
     client.send_message(address, value)
     time.sleep(wait_time)
 
+def transmit_and_record(client: SimpleUDPClient, config_path, input_path, mode):
+    send_and_wait(client, "/record/start", "/Users/luisreyes/Sonify/SonoBox/ex/record1.wav")
+    transmitter(config_path, input_path, mode, client=client)
+    send_and_wait(client, "/record/end", "")
+    pass
 
 def data_generator(config_path, input_path, mode):
     # Step one
     # Transmit with each modification
 
+    # Set up the OCS client
     localhost_ip = "127.0.0.1"
     processing_port_1d_model = 12001
     client = SimpleUDPClient(localhost_ip, processing_port_1d_model)
-    send_and_wait(client, "/record/start", "/Users/luisreyes/Sonify/SonoBox/ex/record1.wav")
-    transmitter(config_path, input_path, mode, client=client)
-    send_and_wait(client, "/record/end", "")
+    # Send transmission and record it
+    transmit_and_record(client, config_path, input_path, mode)
     pass
 
 if __name__ == "__main__":
