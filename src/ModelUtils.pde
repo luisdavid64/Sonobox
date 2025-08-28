@@ -169,7 +169,7 @@ void resetConfig() {
 
 // Alias
 void setConfig() {
-  resetConfig()
+  resetConfig();
 }
 
 void createModelFromConfig() {

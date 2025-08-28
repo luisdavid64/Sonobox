@@ -76,7 +76,7 @@ void setup() {
   cam.setDistance(400);
 
   // Physics and config
-  setConfig()
+  setConfig();
 
   // Create model from config
   createModelFromConfig();
