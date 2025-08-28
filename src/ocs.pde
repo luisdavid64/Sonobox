@@ -72,7 +72,7 @@ void oscEvent(OscMessage msg) {
       if (recorder != null && recorder.isRecording()) {
         recorder.endRecord();
       }
-      recorder = minim.createRecorder(out, savePath, true);
+      recorder = minim.createRecorder(in, savePath, true);
       recorder.beginRecord();
       isRecording = true;
       println("Recording started. Saving to: " + savePath);
@@ -83,8 +83,9 @@ void oscEvent(OscMessage msg) {
   case "/record/end": {
     if (isRecording && recorder != null) {
       recorder.endRecord();
+      recorder.save(); // Save the recording to disk
       isRecording = false;
-      println("Recording stopped.");
+      println("Recording stopped and saved.");
     }
     break;
   }

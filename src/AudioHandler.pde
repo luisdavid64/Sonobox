@@ -32,6 +32,8 @@ public void resetAudioClient() {
   if (audioStreamHandler != null) {
     audioStreamHandler.shutdown();
     audioStreamHandler = null;
+    in = null;
+    out = null;
   }
   setAudioClient();
 }
