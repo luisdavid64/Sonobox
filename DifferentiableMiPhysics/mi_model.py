@@ -71,6 +71,15 @@ class MIModel:
     
     def get_drivers(self):
         return self.drivers
+    
+    def get_driver_ids(self):
+        if self.drivers is None:
+            return None
+        driver_ids = []
+        for d in self.drivers:
+            idx = self._node_index_from_tuple(tuple(d.tolist()))
+            driver_ids.append(idx)
+        return torch.tensor(driver_ids, device=self.nodes.device)
 
     def get_nodes_and_edges_idx(self):
         # Get nodes and edges_idx without features
