@@ -21,13 +21,11 @@ Implements a stable semi-implicit (symplectic) Euler integrator with viscous dam
 from __future__ import annotations
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Dict, Iterable
-
+from typing import Optional, Tuple 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from msmodel import MassSpringModel
+from mi_model import MIModel
 
 
 # ----------------------- utilities -----------------------
@@ -254,8 +252,9 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Grid 3x3x3, nearest-neighbor springs
-    model = MassSpringModel.from_json("../model_configs/sonobox_data/baselines/biosonix_3D.json", device=device)
-    exit()
+    model = MIModel.from_json("../model_configs/sonobox_data/baselines/biosonix_3D.json", device=device)
+    nodes, edges_idx = model.get_nodes_and_edges_idx()
+    # model.visualize()
 
     sim = DifferentiableMiSonification(model.nodes, model.edge_index, model.springs,
                                        listener_mode='velocity',
