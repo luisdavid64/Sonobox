@@ -94,13 +94,22 @@ def build_edges_by_type(dimX, dimY, dimZ, dist, stiffness=1e-3, damping=0.0, int
     if interaction_type == "FIRST":
         return build_edges_nearest(dimX, dimY, dimZ, dist, stiffness, damping, device)
     elif interaction_type == "SECOND":
-        return build_edges_second_neighbor(dimX, dimY, dimZ, dist, stiffness, damping, device)
+        edge_index, springs = build_edges_nearest(dimX, dimY, dimZ, dist, stiffness, damping, device)
+        edge_index2, springs2 = build_edges_second_neighbor(dimX, dimY, dimZ, dist, stiffness, damping, device)
+        edge_index = torch.cat([edge_index, edge_index2], dim=1)
+        springs = torch.cat([springs, springs2], dim=0)
+        return edge_index, springs
     elif interaction_type == "CHECKERED":
-        return build_edges_checkerboard(dimX, dimY, dimZ, dist, stiffness, damping, device)
+        # Checkerboard and wireframe
+        edge_index, springs = build_edges_checkerboard(dimX, dimY, dimZ, dist, stiffness, damping, device)
+        return wrap_wireframe(edge_index, springs, dimX, dimY, dimZ, dist, stiffness, damping, device)
     elif interaction_type == "DILATED2":
-        return build_edges_dilated2(dimX, dimY, dimZ, dist, stiffness, damping, device)
+        # Dilated and wireframe
+        edge_index2, springs2 = build_edges_dilated2(dimX, dimY, dimZ, dist, stiffness, damping, device)
+        return wrap_wireframe(edge_index2, springs2, dimX, dimY, dimZ, dist, stiffness, damping, device)
     elif interaction_type == "CLIQUE_2x2":
-        return build_edges_clique_2x2(dimX, dimY, dimZ, dist, stiffness, damping, device)
+        edge_index, springs = build_edges_clique_2x2(dimX, dimY, dimZ, dist, stiffness, damping, device)
+        return wrap_wireframe(edge_index, springs, dimX, dimY, dimZ, dist, stiffness, damping, device)
     else:
         raise ValueError(f"Unknown interaction_type: {interaction_type}")
 
@@ -187,3 +196,45 @@ def build_edges_clique_2x2(dimX, dimY, dimZ, dist, stiffness, damping, device):
     edge_index = torch.tensor(edges, dtype=torch.long, device=device).t().contiguous()
     springs = torch.tensor(attrs, dtype=torch.float32, device=device)
     return edge_index, springs
+
+def build_edges_wireframe(dimX, dimY, dimZ, dist, stiffness=1e-3, damping=0.0, device=None):
+    """
+    Connects all boundary nodes to form a wireframe (box) around the grid.
+    Returns (edge_index, springs) for the wireframe only.
+    """
+    def idx(i,j,k): return (i * dimY + j) * dimZ + k
+    edges, attrs = [], []
+    # X edges (along x, at y/z boundaries)
+    for j in [0, dimY-1]:
+        for k in [0, dimZ-1]:
+            for i in range(dimX-1):
+                n1 = idx(i, j, k)
+                n2 = idx(i+1, j, k)
+                edges.append((n1, n2))
+                attrs.append([stiffness, damping, dist, 1, 0, 0])
+    # Y edges (along y, at x/z boundaries)
+    for i in [0, dimX-1]:
+        for k in [0, dimZ-1]:
+            for j in range(dimY-1):
+                n1 = idx(i, j, k)
+                n2 = idx(i, j+1, k)
+                edges.append((n1, n2))
+                attrs.append([stiffness, damping, dist, 0, 1, 0])
+    # Z edges (along z, at x/y boundaries)
+    for i in [0, dimX-1]:
+        for j in [0, dimY-1]:
+            for k in range(dimZ-1):
+                n1 = idx(i, j, k)
+                n2 = idx(i, j, k+1)
+                edges.append((n1, n2))
+                attrs.append([stiffness, damping, dist, 0, 0, 1])
+    edge_index = torch.tensor(edges, dtype=torch.long, device=device).t().contiguous()
+    springs = torch.tensor(attrs, dtype=torch.float32, device=device)
+    return edge_index, springs
+
+# Add wireframe to edges and springs
+def wrap_wireframe(edge_index, springs, dimX, dimY, dimZ, dist, stiffness=1e-3, damping=0.0, device=None):
+    edge_index_wf, springs_wf = build_edges_wireframe(dimX, dimY, dimZ, dist, stiffness, damping, device)
+    edge_index_combined = torch.cat([edge_index, edge_index_wf], dim=1)
+    springs_combined = torch.cat([springs, springs_wf], dim=0)
+    return edge_index_combined, springs_combined
