@@ -1,5 +1,7 @@
 import plotly.graph_objects as go
 import numpy as np
+import matplotlib.animation as animation
+import matplotlib.pyplot as plt
 
 
 def plot_model_graph_3d(
@@ -100,3 +102,45 @@ def plot_model_graph_3d(
         margin=dict(l=0, r=0, t=30 if title else 0, b=0)
     )
     fig.write_html("graph3d.html")
+
+def animate_trajectory_3d(traj, model, interval=30, node_size=30, edge_color='gray'):
+    traj_np = traj.detach().cpu().numpy() if hasattr(traj, 'cpu') else traj  # [T,N,3]
+    rest_pos = model.rest_pos.cpu().numpy()
+    edge_list = model.edge_index.cpu().numpy().T.tolist() if hasattr(model.edge_index, 'cpu') else model.edge_index.T.tolist()
+    N = traj_np.shape[1]
+
+    fig = plt.figure(figsize=(8,6))
+    ax = fig.add_subplot(111, projection='3d')
+    abs_traj = rest_pos[None, :, :] + traj_np  # [T,N,3]
+    x_min, x_max = abs_traj[:,:,0].min(), abs_traj[:,:,0].max()
+    y_min, y_max = abs_traj[:,:,2].min(), abs_traj[:,:,2].max()
+    z_min, z_max = abs_traj[:,:,1].min(), abs_traj[:,:,1].max()
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    ax.set_zlim(z_min, z_max)
+
+    nodes = ax.scatter(abs_traj[0,:,0], abs_traj[0,:,2], abs_traj[0,:,1], s=node_size, c='b')
+    lines = []
+    for edge in edge_list:
+        line, = ax.plot([abs_traj[0,edge[0],0], abs_traj[0,edge[1],0]],
+                        [abs_traj[0,edge[0],1], abs_traj[0,edge[1],1]],
+                        [abs_traj[0,edge[0],2], abs_traj[0,edge[1],2]],
+                        color=edge_color, alpha=0.5)
+        lines.append(line)
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_title('Mass-Spring Trajectory (3D)')
+
+    def update(frame):
+        nodes._offsets3d = (abs_traj[frame,:,0], abs_traj[frame,:,2], abs_traj[frame,:,1])
+        for line, edge in zip(lines, edge_list):
+            line.set_data([abs_traj[frame,edge[0],0], abs_traj[frame,edge[1],0]],
+                        [abs_traj[frame,edge[0],2], abs_traj[frame,edge[1],2]])
+            line.set_3d_properties([abs_traj[frame,edge[0],1], abs_traj[frame,edge[1],1]])
+        ax.set_title(f"Frame {frame}")
+        return [nodes] + lines
+
+    ani = animation.FuncAnimation(fig, update, frames=abs_traj.shape[0], interval=interval, blit=False)
+    plt.show()    
