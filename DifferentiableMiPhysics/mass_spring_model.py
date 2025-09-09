@@ -136,22 +136,13 @@ class MassSpringModel(nn.Module):
             # default medium-friction ~ 0
             fr = torch.zeros_like(self.inv_mass)
         fr = fr.view(-1, 1)                       # [N,1]
-
         # choose units: miPhysics per-sample, or dt-scaled physics
-        if getattr(self, 'use_dt_scaling', False):
-            dt  = float(self.dt)
-            dt2 = dt * dt
-            c   = invM * fr * dt                   # [N,1]
-            a   = invM * self.m_frc * dt2          # [N,3]
-            g   = self.gravity.view(1,3) * dt2     # [1,3]
-        else:
-            c   = invM * fr                        # [N,1]
-            a   = invM * self.m_frc                # [N,3]
-            g   = self.gravity.view(1,3)           # [1,3]
+        c   = invM * fr                        # [N,1]
+        a   = invM * self.m_frc                # [N,3]
+        g   = self.gravity.view(1,3)           # [1,3]
 
         x_prev = self.m_posR
-        x_curr = self.m_pos
-        tmp    = x_curr.clone()
+        x_curr = self.m_pos.clone()
 
         # x_new = (2 - c) * x - (1 - c) * x_prev + a - g
         x_new  = x_curr * (2.0 - c) - x_prev * (1.0 - c) + a - g
