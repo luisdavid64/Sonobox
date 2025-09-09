@@ -18,7 +18,7 @@ boolean showInstructions = true;
 // minim library for recordings
 import ddf.minim.*;
 import ddf.minim.ugens.*;
-int displayRate = 90;
+int displayRate = 60;
 Minim minim;
 AudioInput in;
 AudioRecorder recorder;
