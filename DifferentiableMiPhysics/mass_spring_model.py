@@ -1,13 +1,11 @@
+from viz_utils import plot_model_graph_3d
 import torch
 from torch import nn
-from typing import Optional, List, Tuple
-from topology_utils import build_grid_nodes, build_edges_nearest, build_edges_by_type
-import matplotlib.pyplot as plt
-import networkx as nx
-from mpl_toolkits.mplot3d import Axes3D
+from typing import Optional
+from topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
 
 class MassSpringModel(nn.Module):
-    def __init__(self, nodes, edge_index, springs, drivers=None, listeners=None, config=None, dimX=None, dimY=None, dimZ=None, interactionType="FIRST"):
+    def __init__(self, nodes, edge_index, springs, drivers=None, listeners=None, config=None, dimX=None, dimY=None, dimZ=None, interactionType="FIRST", bounds=[]):
         super().__init__()
         self.nodes = nodes         # [N, 8]
         self.edge_index = edge_index    # [2, E]
@@ -19,7 +17,8 @@ class MassSpringModel(nn.Module):
         self.dimY = dimY
         self.dimZ = dimZ
         self.interactionType = interactionType
-
+        self.bounds = bounds
+    
         self.N = nodes.shape[0]
         self.E = edge_index.shape[1]
         self.dt = 1e-3
@@ -27,26 +26,45 @@ class MassSpringModel(nn.Module):
         # Learnable parameters (example: per-mass and per-spring)
         self.masses   = nn.Parameter(torch.full((self.N,), 1.0))          # per-mass
         self.damping  = nn.Parameter(torch.full((self.N,), 0.02))         # per-mass
-        self.k        = nn.Parameter(torch.full((self.E,), 200.0))        # per-spring
-        self.rest     = nn.Parameter(torch.full((self.E,), 0.5))          # per-spring
-        self.radius   = nn.Parameter(torch.full((self.N,), 0.01))         # optional
+
+        edge_index, springs = dedupe_undirected(edge_index, springs)
+        self.edge_index = edge_index
+        self.k    = nn.Parameter(springs[:, 0].clone())   # [E]
+        self.damping = nn.Parameter(springs[:, 1].clone()) # [E] (edge damping)
+        self.edge_z = self.damping #?
+        self.rest = nn.Parameter(springs[:, 2].clone())   # [E]
 
         # Internal state: positions and velocities
-        self.x = torch.zeros((self.N, self.dim), device=self.nodes.device)
+        # Place nodes at their grid positions (columns 0:3 of nodes)
+        self.rest_pos = self.nodes[:, 0:3].clone()
+        self.x = torch.zeros((self.N, self.dim), device=self.nodes.device)  # displacement from rest
         self.v = torch.zeros((self.N, self.dim), device=self.nodes.device)
         self.forces = torch.zeros((self.N, self.dim), device=self.nodes.device)  # external forces
 
-    def spring_forces(self, x):
+    def spring_forces(self, x, v):
+        # positions in world space
+        pos = self.rest_pos + x
         i, j = self.edge_index[0], self.edge_index[1]
-        d = x[j] - x[i]                                      # [E,dim]
-        L = (d.pow(2).sum(-1) + 1e-12).sqrt()                # [E]
-        dir = d / L.unsqueeze(-1)
-        f = (self.k * (L - self.rest)).unsqueeze(-1) * dir   # [E,dim]
+        d  = pos[j] - pos[i]                              # [E,3]
+        L  = (d.square().sum(-1) + 1e-12).sqrt()          # [E]
+        dir = d / L.unsqueeze(-1)                         # [E,3]
+
+        # Hooke force magnitude
+        f_el = self.k * (L - self.rest)                   # [E]
+
+        # Project relative velocity onto spring direction (edge damping)
+        v_rel = (v[j] - v[i])                             # [E,3]
+        v_rel_axis = (v_rel * dir).sum(-1)                # [E]
+        f_damp = - self.damping * v_rel_axis               # [E]
+
+        f_mag = (f_el + f_damp).unsqueeze(-1)             # [E,1]
+        f_vec = f_mag * dir                               # [E,3]
 
         F = torch.zeros_like(x)
-        F.index_add_(0, i,  f)
-        F.index_add_(0, j, -f)
+        F.index_add_(0, i,  f_vec)
+        F.index_add_(0, j, -f_vec)
         return F
+
 
     @torch.no_grad()
     def rewire(self, new_edge_index):
@@ -67,14 +85,19 @@ class MassSpringModel(nn.Module):
         if g is None:
             g = torch.tensor([0.0, -9.81, 0.0], device=x.device)
 
-        F = self.spring_forces(x)
-        F += g * self.masses.unsqueeze(-1)                   # gravity
-        F += -self.damping.unsqueeze(-1) * v                 # viscous damping
-        F += self.forces                                     # apply accumulated external forces
-
+        F = self.spring_forces(x, v)
+        fixed_mask = self.nodes[:, 5].view(-1, 1)            # 1.0 → fixed
+        F = F + self.forces
+        # zero any external/spring forces on fixed nodes
+        F = F * (1.0 - fixed_mask)
         a = F / self.masses.unsqueeze(-1)
+        # prevent accelerations on fixed nodes (defensive)
+        a = a * (1.0 - fixed_mask)
         v = v + self.dt * a
         x = x + self.dt * v
+        # enforce constraints
+        v = v * (1.0 - fixed_mask)
+        x = x * (1.0 - fixed_mask)
 
         # Update internal state
         self.x = x
@@ -97,6 +120,15 @@ class MassSpringModel(nn.Module):
                     idx = self._node_index_from_tuple(tuple(d.tolist()))
                     self.forces[idx] += force
         self.forces += force
+
+    def apply_force_nodes(self, node_indices: torch.Tensor, force_vec):
+        f = torch.as_tensor(force_vec, device=self.nodes.device, dtype=self.x.dtype).view(1, self.dim)
+        self.forces.index_add_(0, node_indices, f.expand(node_indices.numel(), -1))
+
+    def apply_force_on_drivers(self, force_vec):
+        ids = self.get_driver_ids()
+        if ids is not None and ids.numel() > 0:
+            self.apply_force_nodes(ids, force_vec)
 
     @classmethod
     def from_config(cls, config: dict, device: Optional[torch.device] = None):
@@ -122,6 +154,7 @@ class MassSpringModel(nn.Module):
         # Drivers: (no_drivers, 3), Listeners: (no_listeners, 3)
         drivers = torch.tensor([parse_mass_name(n) for n in config["sonification_set_up"]["drivers"]])
         listeners = torch.tensor([parse_mass_name(n) for n in config["sonification_set_up"]["listeners"]])
+        bounds = config.get("bounds", [])
 
         
         # Interactions
@@ -136,6 +169,7 @@ class MassSpringModel(nn.Module):
             radius=mass_radius,
             drivers=drivers,
             listeners=listeners,
+            bounds=bounds,
             device=device
         )
         edge_index, springs = build_edges_by_type(
@@ -146,7 +180,7 @@ class MassSpringModel(nn.Module):
             interaction_type=interactionType,
             device=device
         )
-        return cls(nodes, edge_index, springs, drivers, listeners, config, dimX=dimX, dimY=dimY, dimZ=dimZ, interactionType=interactionType)
+        return cls(nodes, edge_index, springs, drivers, listeners, config, dimX=dimX, dimY=dimY, dimZ=dimZ, interactionType=interactionType, bounds=bounds)
     
     def get_listeners(self):
         return self.listeners
@@ -163,6 +197,11 @@ class MassSpringModel(nn.Module):
             driver_ids.append(idx)
         return torch.tensor(driver_ids, device=self.nodes.device)
 
+    def get_fixed_ids(self):
+        fixed_mask = self.nodes[:, 5]
+        fixed_ids = torch.nonzero(fixed_mask, as_tuple=False).view(-1)
+        return fixed_ids
+
     def get_nodes_and_edges_idx(self):
         # Get nodes and edges_idx without features
         nodes_idx = torch.arange(self.nodes.shape[0])
@@ -177,47 +216,9 @@ class MassSpringModel(nn.Module):
             config = json.load(f)
         return cls.from_config(config, device=device)
 
-    def visualize(self, show_drivers=True, show_listeners=True, figsize=(8,6)):
-        """
-        Visualize the model topology in 3D using NetworkX and matplotlib.
-        Y axis is up, Z is back, X is right (MI Physics convention).
-        """
+    def visualize(self):
+        plot_model_graph_3d(self)
 
-        positions = self.nodes[:, :3].cpu().numpy()
-        node_indices = range(positions.shape[0])
-        pos_dict = {i: positions[i] for i in node_indices}
-        edge_list = self.edge_index.cpu().numpy().T.tolist()
-
-        G = nx.Graph()
-        G.add_nodes_from(node_indices)
-        G.add_edges_from(edge_list)
-
-        fig = plt.figure(figsize=figsize)
-        ax = fig.add_subplot(111, projection='3d')
-
-        # Swap axes: x (right), y (up), z (back)
-        ax.scatter(positions[:,0], positions[:,2], positions[:,1], c='b', s=30, label='Nodes')
-
-        # Highlight drivers and listeners
-        if show_drivers and self.drivers is not None:
-            driver_idx = [self._node_index_from_tuple(tuple(d.tolist())) for d in self.drivers]
-            ax.scatter(positions[driver_idx,0], positions[driver_idx,2], positions[driver_idx,1], c='r', s=60, label='Drivers')
-        if show_listeners and self.listeners is not None:
-            listener_idx = [self._node_index_from_tuple(tuple(l.tolist())) for l in self.listeners]
-            ax.scatter(positions[listener_idx,0], positions[listener_idx,2], positions[listener_idx,1], c='g', s=60, label='Listeners')
-
-        # Plot edges
-        for edge in edge_list:
-            p1 = positions[edge[0]]
-            p2 = positions[edge[1]]
-            ax.plot([p1[0], p2[0]], [p1[2], p2[2]], [p1[1], p2[1]], color='gray', alpha=0.5)
-
-        ax.set_xlabel('X (right)')
-        ax.set_ylabel('Z (back)')
-        ax.set_zlabel('Y (up)')
-        ax.legend()
-        plt.tight_layout()
-        plt.show()
 
     def _node_index_from_tuple(self, idx_tuple):
         i, j, k = idx_tuple

@@ -56,11 +56,26 @@ def plot_model_graph_3d(
         showlegend=False
     )
 
-    # --- Nodes trace ---
+    # --- Node coloring and highlighting ---
+    # Default color
+    colors = np.full((N,), node_color)
+    # Fixed nodes: red
+    if hasattr(model, 'nodes') and model.nodes.shape[1] > 5:
+        fixed_mask = model.nodes[:, 5].detach().cpu().numpy() > 0.5
+        colors[fixed_mask] = '#d62728'  # red
+    # Drivers: green
+    if hasattr(model, 'nodes') and model.nodes.shape[1] > 6:
+        driver_mask = model.nodes[:, 6].detach().cpu().numpy() > 0.5
+        colors[driver_mask] = '#2ca02c'  # green
+    # Listeners: orange
+    if hasattr(model, 'nodes') and model.nodes.shape[1] > 7:
+        listener_mask = model.nodes[:, 7].detach().cpu().numpy() > 0.5
+        colors[listener_mask] = '#ff7f0e'  # orange
+
     node_trace = go.Scatter3d(
         x=pos[:, 0], y=pos[:, 1], z=pos[:, 2],
         mode="markers",
-        marker=dict(size=node_size, opacity=node_opacity),
+        marker=dict(size=3*node_size, opacity=node_opacity, color=colors),
         hoverinfo="skip",
         showlegend=False
     )

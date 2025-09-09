@@ -32,7 +32,9 @@ def build_grid_nodes(dimX: int, dimY: int, dimZ: int,
                      fixed_corners: bool = False,
                      drivers: Optional[torch.Tensor] = None,
                      listeners: Optional[torch.Tensor] = None,
-                     device: Optional[torch.device] = None) -> torch.Tensor:
+                     bounds: Optional[Iterable[str]] = [],
+                     device: Optional[torch.device] = None
+    ) -> torch.Tensor:
     """Create [N,8] node feature tensor with grid positions and flags.
     drivers/listeners are lists of (i,j,k) indices.
     """
@@ -50,6 +52,17 @@ def build_grid_nodes(dimX: int, dimY: int, dimZ: int,
                 # Fixed corners if requested
                 if fixed_corners and (i in (0, dimX-1)) and (j in (0, dimY-1)) and (k in (0, dimZ-1)):
                     nodes[n, 5] = 1.0
+    for bound in bounds:
+        if bound == 'Y_LEFT':
+            for i in range(1, dimX-1):
+                for k in range(1, dimZ-1):
+                    id = (i * dimY + 0) * dimZ + k
+                    nodes[id, 5] = 1.0
+        if bound == 'Y_RIGHT':
+            for i in range(1, dimX-1):
+                for k in range(1, dimZ-1):
+                    id = (i * dimY + (dimY-1)) * dimZ + k
+                    nodes[id, 5] = 1.0
     # Mark drivers/listeners
     if drivers is not None:
         nodes[idx(drivers[:,0], drivers[:,1], drivers[:,2]), 6] = 1.0
@@ -238,3 +251,23 @@ def wrap_wireframe(edge_index, springs, dimX, dimY, dimZ, dist, stiffness=1e-3, 
     edge_index_combined = torch.cat([edge_index, edge_index_wf], dim=1)
     springs_combined = torch.cat([springs, springs_wf], dim=0)
     return edge_index_combined, springs_combined
+
+def dedupe_undirected(edge_index: torch.Tensor, springs: torch.Tensor):
+    # edge_index: [2, E_dir], springs: [E_dir, ...] (or [E_dir] if already split)
+    i, j = edge_index[0], edge_index[1]
+    lo = torch.minimum(i, j)
+    hi = torch.maximum(i, j)
+    pairs = torch.stack([lo, hi], dim=1)                       # [E_dir,2]
+
+    # unique undirected pairs + inverse map
+    uniq, inv = torch.unique(pairs, dim=0, return_inverse=True)  # uniq: [E_und,2], inv: [E_dir]
+    E_und = uniq.shape[0]
+
+    # merge duplicate attributes by averaging
+    springs_und = torch.zeros(E_und, springs.shape[1], device=springs.device, dtype=springs.dtype)
+    springs_und.index_add_(0, inv, springs)
+    counts = torch.bincount(inv, minlength=E_und).clamp_min(1).float().unsqueeze(1)
+    springs_und = springs_und / counts
+
+    edge_und = uniq.T.contiguous()  # [2, E_und]
+    return edge_und, springs_und
