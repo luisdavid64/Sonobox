@@ -16,7 +16,7 @@ class MassSpringModel(nn.Module):
                  drivers=None, listeners=None, config=None,
                  dimX=None, dimY=None, dimZ=None,
                  interactionType="FIRST", bounds=[],
-                 dt: float = 1e-3, gravity=(0.0, -9.81, 0.0)):
+                 dt: float = 1e-3):
         super().__init__()
         # ----- topology & meta -----
         self.nodes = nodes              # [N, 8] (x,y,z,mass,radius,fixed,driver,listener)
@@ -36,7 +36,6 @@ class MassSpringModel(nn.Module):
         self.E = self.edge_index.shape[1]
         self.dim = 3
         self.dt = float(dt)
-        self.register_buffer("g", torch.tensor(gravity, dtype=nodes.dtype, device=nodes.device))
 
         # ----- per-mass parameters -----
         # mass, radius, fixed flags come from nodes
@@ -138,9 +137,6 @@ class MassSpringModel(nn.Module):
         """
         dt = self.dt
 
-        # 1) reset
-        self.resetForce()
-
         # 2) drivers (external forces)
         if self.driver_fn is not None:
             self.driver_fn(self)
@@ -151,9 +147,6 @@ class MassSpringModel(nn.Module):
         Fext = self.m_frc
         F = Fspr + Fext
 
-        # 4) constraints/masks (fixed / gravity / mass damping)
-        # Gravity as mass*G
-        F = F + self.g.view(1, 3) * (1.0 / (self.inv_mass + 1e-12)).unsqueeze(-1)
         # Per-mass viscous damping using velocity proxy
         vel = self.m_pos - self.m_posR
         F = F - self.mass_damp.unsqueeze(-1) * vel
@@ -243,8 +236,12 @@ class MassSpringModel(nn.Module):
     def get_driver_ids(self):
         if self.drivers is None:
             return None
-        ids = [(i * self.dimY + j) * self.dimZ + k for (i, j, k) in self.drivers.tolist()]
+        # Can we turn into a function
+        ids = self.get_ids(self.drivers)
         return torch.tensor(ids, device=self.nodes.device, dtype=torch.long)
+
+    def get_ids(self, tensor):
+        return [(i * self.dimY + j) * self.dimZ + k for (i, j, k) in tensor.tolist()]
 
     def get_fixed_ids(self):
         return torch.nonzero(self.fixed_mask.view(-1) > 0.5, as_tuple=False).view(-1)
@@ -259,20 +256,23 @@ if __name__ == "__main__":
     model = MassSpringModel.from_json("../model_configs/sonobox_data/baselines/biosonix_3D.json", device=device)
 
     traj = []
-    T = int(600)
+    T = int(2000)
     x = None
     v = None
     for t in range(T):
         if t == 0:
-            model.apply_force_on_drivers((1,1,1))
+            model.apply_force_on_drivers((100,100,100))
         x = model.compute()
         traj.append(x)
     traj = torch.stack(traj)  # [T,N,dim]
+
+
 
     print("max |x|:", traj.abs().max().item())
     print("driver ids:", model.get_driver_ids())
     print("driver fixed flags:", model.nodes[model.get_driver_ids(), 5])
     print("fixed ids:", model.get_fixed_ids())
-    from viz_utils import animate_trajectory_3d
+    from viz_utils import render_traj_taichi3d
+
     plot_model_graph_3d(model)
-    animate_trajectory_3d(traj, model)  # XZ
+    render_traj_taichi3d(traj, model.edge_index)

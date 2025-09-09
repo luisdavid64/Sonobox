@@ -25,6 +25,8 @@ import math
 from dataclasses import dataclass
 from typing import Optional, Tuple, Dict, Iterable
 
+from viz_utils import plot_model_graph_3d
+from mass_spring_model import MassSpringModel
 from mi_model import MIModel
 import torch
 import torch.nn as nn
@@ -326,43 +328,68 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Grid 3x3x3, nearest-neighbor springs
-    model = MIModel.from_json("../model_configs/sonobox_data/baselines/biosonix_3D.json", device=device)
-    sim = DifferentiableMiSonification(
-        model.nodes, 
-        model.edge_index, 
-        model.springs,
-        model.drivers,
-        model.listeners,
-        listener_mode='velocity',
-        global_damping=1e-2,
-        device=device
-    )
+    model = MassSpringModel.from_json("../model_configs/sonobox_data/baselines/biosonix_3D.json", device=device)
 
-    # Make a strike
-    fs = 48000.0
-    T = int(2 * fs)
-    strikes = StrikeSpec(
-        node_ids=model.get_driver_ids(),  # matches (1,1,0)
-        times_s=torch.tensor([0.0]),
-        amps=torch.tensor([5.0]),
-        dur_ms=0.0,
-        direction=torch.tensor([1.0,1.0,1.0])
-    )
-    print("num listeners:", int(sim.W_listen.sum().item()))
-    print("listener ids:", sim.listener_ids.tolist())
-    print("num drivers:", strikes.node_ids.numel())
-    print("driver ids:", strikes.node_ids.flatten().tolist())
-    t0 = strikes.times_s.flatten()[0].item()
+    traj = []
+    T = int(60)
+    x = None
+    v = None
+    for t in range(T):
+        if t == 0:
+            model.apply_force_on_drivers((100,100,100))
+        x, v = model.step()
+        traj.append(x)
+    traj = torch.stack(traj)  # [T,N,dim]
 
-    print("first strike time (s):", t0, "sample:", int(round(t0*fs)), "T:", T)
+    print("max |x|:", traj.abs().max().item())
+    print("driver ids:", model.get_driver_ids())
+    print("driver fixed flags:", model.nodes[model.get_driver_ids(), 5])
+    print("fixed ids:", model.get_fixed_ids())
 
+    # import matplotlib.animation as animation
+    # import matplotlib.pyplot as plt
 
-    audio, (xT, vT) = sim(T=T, fs=fs, strikes=strikes)
-    peak = audio.abs().max().item()
-    rms  = audio.pow(2).mean().sqrt().item()
-    print("peak:", peak, "rms:", rms)
-    # Save audio
-    import soundfile as sf
-    sf.write('test_sonification.wav', audio.cpu().numpy().T, int(fs))
-    print('audio shape:', tuple(audio.shape))  # (L,T)
-    print('final x shape:', tuple(xT.shape))   # (N,3)
+    # def animate_trajectory_3d(traj, model, interval=30, node_size=30, edge_color='gray'):
+    #     traj_np = traj.detach().cpu().numpy() if hasattr(traj, 'cpu') else traj  # [T,N,3]
+    #     rest_pos = model.rest_pos.cpu().numpy()
+    #     edge_list = model.edge_index.cpu().numpy().T.tolist() if hasattr(model.edge_index, 'cpu') else model.edge_index.T.tolist()
+    #     N = traj_np.shape[1]
+
+    #     fig = plt.figure(figsize=(8,6))
+    #     ax = fig.add_subplot(111, projection='3d')
+    #     abs_traj = rest_pos[None, :, :] + traj_np  # [T,N,3]
+    #     x_min, x_max = abs_traj[:,:,0].min(), abs_traj[:,:,0].max()
+    #     y_min, y_max = abs_traj[:,:,2].min(), abs_traj[:,:,2].max()
+    #     z_min, z_max = abs_traj[:,:,1].min(), abs_traj[:,:,1].max()
+    #     ax.set_xlim(x_min, x_max)
+    #     ax.set_ylim(y_min, y_max)
+    #     ax.set_zlim(z_min, z_max)
+
+    #     nodes = ax.scatter(abs_traj[0,:,0], abs_traj[0,:,2], abs_traj[0,:,1], s=node_size, c='b')
+    #     lines = []
+    #     for edge in edge_list:
+    #         line, = ax.plot([abs_traj[0,edge[0],0], abs_traj[0,edge[1],0]],
+    #                         [abs_traj[0,edge[0],1], abs_traj[0,edge[1],1]],
+    #                         [abs_traj[0,edge[0],2], abs_traj[0,edge[1],2]],
+    #                         color=edge_color, alpha=0.5)
+    #         lines.append(line)
+
+    #     ax.set_xlabel('X')
+    #     ax.set_ylabel('Y')
+    #     ax.set_zlabel('Z')
+    #     ax.set_title('Mass-Spring Trajectory (3D)')
+
+    #     def update(frame):
+    #         nodes._offsets3d = (abs_traj[frame,:,0], abs_traj[frame,:,2], abs_traj[frame,:,1])
+    #         for line, edge in zip(lines, edge_list):
+    #             line.set_data([abs_traj[frame,edge[0],0], abs_traj[frame,edge[1],0]],
+    #                         [abs_traj[frame,edge[0],2], abs_traj[frame,edge[1],2]])
+    #             line.set_3d_properties([abs_traj[frame,edge[0],1], abs_traj[frame,edge[1],1]])
+    #         ax.set_title(f"Frame {frame}")
+    #         return [nodes] + lines
+
+    #     ani = animation.FuncAnimation(fig, update, frames=abs_traj.shape[0], interval=interval, blit=False)
+    #     plt.show()    
+    # plot_model_graph_3d(model)
+    # animate_trajectory_3d(traj, model)  # XZ
+
