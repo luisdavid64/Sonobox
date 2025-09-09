@@ -2,7 +2,8 @@ import torch
 from torch import nn
 from typing import Optional
 from topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
-from viz_utils import plot_model_graph_3d
+from viz_utils import plot_model_graph_3d, render_traj_taichi3d
+from audio_helpers import _axis_pick_t, _dc_block_t, _stereo_mixer_t  
 
 class MassSpringModel(nn.Module):
     """
@@ -16,7 +17,7 @@ class MassSpringModel(nn.Module):
                  drivers=None, listeners=None, config=None,
                  dimX=None, dimY=None, dimZ=None,
                  interactionType="FIRST", bounds=[],
-                 dt: float = 1e-3):
+                 dt: float = 1/44100):
         super().__init__()
         # ----- topology & meta -----
         self.nodes = nodes              # [N, 8] (x,y,z,mass,radius,fixed,driver,listener)
@@ -69,9 +70,12 @@ class MassSpringModel(nn.Module):
         # Driver/listener index caches
         self._driver_ids = self.get_driver_ids()
 
-        # Optional hooks
-        self.driver_fn = None     # callable(self) -> writes into self.m_frc
-        self.listener_fn = None   # callable(self) -> reads state
+        # Global
+        self.fric = nn.Parameter(torch.tensor(0.25))
+        self.register_buffer("gravity", torch.zeros(3, device=self.nodes.device, dtype=self.nodes.dtype))
+        self.use_dt_scaling = False
+
+
 
     # ---------------- miPhysics-like API ----------------
     def resetForce(self):
@@ -100,79 +104,81 @@ class MassSpringModel(nn.Module):
             self.ctrl_vel.index_fill_(0, node_indices, 0.0)
 
     # ---------------- interactions (springs) ----------------
-    def spring_forces(self, pos, pos_prev):
-        """
-        Accumulate spring forces into a fresh tensor (does NOT modify self.m_frc).
-        - Elastic: k * (L - rest)
-        - Relative damping along spring: -edge_z * ((v_rel · dir)), v_rel ≈ ((pos - pos_prev) difference)
-        """
-        i, j = self.edge_index[0], self.edge_index[1]
-        d  = pos[j] - pos[i]                       # [E,3]
-        L  = (d.square().sum(-1) + 1e-12).sqrt()   # [E]
-        dir = d / L.unsqueeze(-1)                  # [E,3]
+    def spring_damper_forces(self, pos, pos_prev):
+        i, j   = self.edge_index[0], self.edge_index[1]
+        d      = pos[j]      - pos[i]
+        d_prev = pos_prev[j] - pos_prev[i]
+        L      = (d.square().sum(-1)      + 1e-12).sqrt()
+        L_prev = (d_prev.square().sum(-1) + 1e-12).sqrt()
+        dir    = d / L.unsqueeze(-1)
 
-        # Elastic
-        f_el = self.k * (L - self.rest)            # [E]
-
-        # Relative "velocity" along the edge (Verlet proxy)
-        v_i = pos[i] - pos_prev[i]
-        v_j = pos[j] - pos_prev[j]
-        v_rel_axis = ((v_j - v_i) * dir).sum(-1)   # [E]
-        f_damp = - self.edge_z * v_rel_axis        # [E]
-
-        f_mag = (f_el + f_damp).unsqueeze(-1)      # [E,1]
-        f_vec = f_mag * dir                        # [E,3]
+        f_el   = - self.k      * (L - self.rest)     # <-- fix sign
+        f_damp = - self.edge_z * (L - L_prev)
+        f_vec  = (f_el + f_damp).unsqueeze(-1) * dir
 
         F = torch.zeros_like(pos)
         F.index_add_(0, i,  f_vec)
         F.index_add_(0, j, -f_vec)
         return F
 
-    # ---------------- one physics tick ----------------
     def compute(self):
         """
-        One miPhysics-style step:
-          reset -> drivers -> interactions -> constraints -> integrate -> listeners
-        Uses Verlet with per-mass viscous damping via velocity proxy.
+        miPhysics-style step with lagged forces:
+        - use *current* m_frc (accumulated last step) to integrate
+        - then zero m_frc and accumulate new forces (springs + drivers) for the next step
+        - listener hook runs after states are updated
+        Position-form Verlet with medium friction like miPhysics.
         """
-        dt = self.dt
+        # === 1) INTEGRATE using previous step's forces (in m_frc) ===
+        invM = self.inv_mass.view(-1, 1)          # [N,1]
+        fr   = getattr(self, 'fric', None)
+        if fr is None:
+            # default medium-friction ~ 0
+            fr = torch.zeros_like(self.inv_mass)
+        fr = fr.view(-1, 1)                       # [N,1]
 
-        # 2) drivers (external forces)
-        if self.driver_fn is not None:
-            self.driver_fn(self)
-        # (You can also call apply_force_on_drivers(...) before compute())
+        # choose units: miPhysics per-sample, or dt-scaled physics
+        if getattr(self, 'use_dt_scaling', False):
+            dt  = float(self.dt)
+            dt2 = dt * dt
+            c   = invM * fr * dt                   # [N,1]
+            a   = invM * self.m_frc * dt2          # [N,3]
+            g   = self.gravity.view(1,3) * dt2     # [1,3]
+        else:
+            c   = invM * fr                        # [N,1]
+            a   = invM * self.m_frc                # [N,3]
+            g   = self.gravity.view(1,3)           # [1,3]
 
-        # 3) interactions (springs)
-        Fspr = self.spring_forces(self.m_pos, self.m_posR)
-        Fext = self.m_frc
-        F = Fspr + Fext
+        x_prev = self.m_posR
+        x_curr = self.m_pos
+        tmp    = x_curr.clone()
 
-        # Per-mass viscous damping using velocity proxy
-        vel = self.m_pos - self.m_posR
-        F = F - self.mass_damp.unsqueeze(-1) * vel
-        # Zero forces on fixed nodes
-        F = F * (1.0 - self.fixed_mask)
+        # x_new = (2 - c) * x - (1 - c) * x_prev + a - g
+        x_new  = x_curr * (2.0 - c) - x_prev * (1.0 - c) + a - g
 
-        # 5) integrate (Verlet with inverse mass)
-        a = self.inv_mass.unsqueeze(-1) * F                    # a = F * inv_mass
-        # Optional velocity control (like triggerVelocityControl in miPhysics)
-        vel_ctrl = torch.where(self.ctrl_on > 0, self.ctrl_vel, torch.zeros_like(self.ctrl_vel))
-        # Verlet step with control term added as extra velocity
-        vel_eff = vel + dt * a + vel_ctrl * self.ctrl_on
-        x_new = self.m_pos + vel_eff
+        # enforce fixed nodes (keep where they are)
+        fixed  = self.fixed_mask                  # [N,1] with 1.0 for fixed
+        x_new  = (1.0 - fixed) * x_new + fixed * x_curr
 
-        # Enforce fixed nodes: keep them at rest pose (or current posR) and zero velocity
-        x_new = (1.0 - self.fixed_mask) * x_new + self.fixed_mask * self.m_pos
+        # rotate buffers
+        self.m_posR = x_curr
+        self.m_pos  = x_new
 
-        # Rotate buffers
-        self.m_posR, self.m_pos = self.m_pos, x_new
+        # === 2) BUILD FORCES for the next step (springs + drivers) ===
+        # start fresh next-step force buffer
+        self.m_frc.zero_()
 
-        # 6) listeners
-        if self.listener_fn is not None:
-            self.listener_fn(self)
+        # interactions (springs) add to m_frc for next step
+        Fspr = self.spring_damper_forces(self.m_pos, self.m_posR)  # [N,3]
+        self.m_frc += Fspr
 
-        # clear forces for next tick (miPhysics resets each compute)
-        self.resetForce()
+        # optional per-mass viscous damping (velocity proxy) for next step
+        vel_proxy = self.m_pos - self.m_posR
+        if hasattr(self, 'mass_damp'):
+            self.m_frc += (- self.mass_damp.view(-1,1)) * vel_proxy
+
+        # zero forces on fixed nodes (so next step ignores them)
+        self.m_frc *= (1.0 - fixed)
 
         return self.m_pos
 
@@ -249,30 +255,222 @@ class MassSpringModel(nn.Module):
     def visualize(self):
         plot_model_graph_3d(self)
 
-if __name__ == "__main__":
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    #---------------- audio ----------------
 
+    @torch.no_grad()
+    def simulate_listeners(self,
+                           steps: int,
+                           listener_ids: torch.Tensor,
+                           observable: str = "pos",   # 'pos' | 'vel' | 'acc' | 'force'
+                           axis: str = "all") -> torch.Tensor:
+        """
+        Run `steps` physics ticks and return raw multichannel listener signal at sim rate.
+        Output shape: [steps, C] (C = #listeners). Uses current self.dt.
+        """
+        device = self.nodes.device
+        ids = listener_ids.to(device, dtype=torch.long)
+        C = ids.numel()
+        out = torch.zeros(steps, C, device=device, dtype=self.m_pos.dtype)
+
+        # caches
+        prev_abs = self.m_pos.clone()  # for vel if needed
+
+        for t in range(steps):
+            # one physics step
+            self.compute()
+
+            # absolute pos
+            pos_abs = self.m_pos
+            if observable == "pos":
+                val = pos_abs[ids]                                   # [C,3]
+                out[t] = _axis_pick_t(val, axis)                     # [C]
+            elif observable == "vel" or observable == "acc":
+                vel = (pos_abs - prev_abs) / self.dt                 # [N,3]
+                if observable == "vel":
+                    val = vel[ids]                                   # [C,3]
+                    out[t] = _axis_pick_t(val, axis)
+                else:
+                    # one more diff for acc: a ≈ Δv / dt
+                    # use previous vel from last step (store it)
+                    if t == 0:
+                        acc = torch.zeros_like(vel)
+                    else:
+                        acc = (vel - prev_vel) / self.dt
+                    val = acc[ids]
+                    out[t] = _axis_pick_t(val, axis)
+                prev_vel = vel
+            elif observable == "force":
+                # recompute spring forces at *current* state
+                Fspr = self.spring_forces(self.m_pos, self.m_posR)   # [N,3]
+                val = Fspr[ids]
+                out[t] = _axis_pick_t(val, axis)
+            else:
+                raise ValueError("observable must be 'pos' | 'vel' | 'acc' | 'force'.")
+
+            prev_abs = pos_abs
+
+        return out  # [steps, C]
+
+    def resample_to_audio(self,
+                          sig_sim: torch.Tensor,   # [T_sim, C] at dt_sim=self.dt
+                          fs: int = 44100) -> torch.Tensor:
+        """
+        Linear resample from sim timebase (dt=self.dt) to audio (fs).
+        Returns [T_audio, C]. Pure Torch (differentiable).
+        """
+        device = sig_sim.device
+        T_sim, C = sig_sim.shape
+        dt = float(self.dt)
+        dur = dt * (T_sim - 1)
+        T_audio = int(round(dur * fs)) + 1
+
+        # time grids
+        t_sim = torch.linspace(0.0, dur, T_sim, device=device)
+        t_out = torch.linspace(0.0, dur, T_audio, device=device)
+
+        # compute fractional indices into sim grid
+        # i such that t_out ≈ t_sim[i]…t_sim[i+1]
+        idx_float = t_out / dt
+        i0 = torch.clamp(idx_float.floor().long(), 0, T_sim - 2)   # [T_audio]
+        w = (idx_float - i0.float()).unsqueeze(-1)                 # [T_audio,1]
+
+        y0 = sig_sim[i0, :]                                        # [T_audio, C]
+        y1 = sig_sim[i0 + 1, :]
+        y  = (1.0 - w) * y0 + w * y1                               # [T_audio, C]
+        return y
+
+    def mix_down(self,
+                 multich: torch.Tensor,     # [T, C]
+                 layout: str = "stereo",    # 'mono' | 'stereo'
+                 method: str = "by_position",
+                 listener_ids: torch.Tensor | None = None,
+                 plane: tuple[int,int] = (0,2),
+                 target_peak: float = 0.99,
+                 soft_clip: bool = True,
+                 clip_drive: float = 2.0) -> torch.Tensor:
+        """
+        Mix C listeners to mono/stereo (Torch). Returns [T, K].
+        """
+        device = multich.device
+        T, C = multich.shape
+        if layout == "mono":
+            y = multich.mean(dim=1, keepdim=True)                  # [T,1]
+        elif layout == "stereo":
+            if listener_ids is None:
+                raise ValueError("listener_ids required for stereo mixing when method='by_position'")
+            # get static listener positions (rest_pos are fine)
+            lp = self.rest_pos[listener_ids.to(device, dtype=torch.long)]  # [C,3]
+            G = _stereo_mixer_t(C, method=method, listener_pos=lp, plane=plane).to(device)  # [C,2]
+            y = multich @ G                                        # [T,2]
+        else:
+            raise ValueError("layout must be 'mono' or 'stereo'.")
+
+        # peak normalize
+        peak = torch.max(torch.abs(y)).clamp_min(1e-9)
+        y = y * (target_peak / peak)
+
+        # optional soft clip
+        if soft_clip:
+            y = torch.tanh(y * clip_drive) / torch.tanh(torch.tensor(clip_drive, device=device))
+
+        return y  # [T, K]
+
+    @torch.no_grad()
+    def render_audio_offline(self,
+                             seconds: float,
+                             fs: int = 16000,
+                             observable: str = "pos",
+                             axis: str = "all",
+                             listener_ids: torch.Tensor | None = None,
+                             layout: str = "stereo",
+                             pan_method: str = "by_position",
+                             hp: bool = True,
+                             gain: float = 1.0) -> torch.Tensor:
+        """
+        End-to-end: simulate at current dt for `seconds`, capture listeners,
+        resample to `fs`, downmix, return audio [T_audio, K].
+        """
+        device = self.nodes.device
+        if listener_ids is None:
+            ids = self.get_driver_ids()
+            if ids is None or ids.numel() == 0:
+                ids = torch.tensor([self.N // 2], device=device, dtype=torch.long)
+            listener_ids = ids
+
+        # how many sim steps?
+        steps = int(round(seconds / float(self.dt)))
+        raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis)  # [T_sim,C]
+
+        # (optional) DC-block at sim rate before resampling (helps big drifts for positions)
+        if hp:
+            raw = _dc_block_t(raw)
+
+        # resample to audio
+        audio_mc = self.resample_to_audio(raw, fs=fs)  # [T_audio, C]
+
+        # mix to target layout
+        audio = self.mix_down(audio_mc, layout=layout, method=pan_method, listener_ids=listener_ids)
+
+        # final gain & clamp
+        audio = torch.clamp(audio * gain, -1.0, 1.0)
+
+        return audio  # [T_audio, K]
+
+if __name__ == "__main__":
+    fs = 16000
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     # Grid 3x3x3, nearest-neighbor springs
     model = MassSpringModel.from_json("../model_configs/sonobox_data/baselines/biosonix_3D.json", device=device)
+    model.eval()
+    model.dt = 1 / fs
 
     traj = []
-    T = int(2000)
+    T = int(4*fs)  # 1 second at 44.1kHz
     x = None
     v = None
+    example_driver_id = model.get_driver_ids()[0].item()
+    print("Example driver id:", example_driver_id)
     for t in range(T):
         if t == 0:
-            model.apply_force_on_drivers((100,100,100))
+            model.apply_force_on_drivers((3,3,3))
         x = model.compute()
+        if t == 0 or t == 8000 or t == 4000 or t == 32000:
+            print(f"Step {t}: driver pos {x[example_driver_id].detach().cpu().numpy()}")
         traj.append(x)
     traj = torch.stack(traj)  # [T,N,dim]
 
+    # 3) Strong, undeniable excitation
+    # Option A: immediate force for 10 steps (works with lagged-forces too)
+    # for _ in range(10):                      # ~10 ms if dt=1e-3
+    #     model.apply_force_on_drivers((1.0, 0.0, 0.0))  # BIG force
+    #     model.compute()
+
+    # Option B: instant velocity kick (bypasses force buffering)
+    # model.kick_nodes(ids, (10.0, 0.0, 0.0))
+    # for _ in range(10): model.compute()
+
+    # 4) Check movement
+    # disp = (model.m_pos - x0)
+    # print("max |disp|:", disp.abs().max().item())
+    # print("sample driver pos:", model.m_pos[model.get_driver_ids()[0]])
+    # exit()
 
 
-    print("max |x|:", traj.abs().max().item())
-    print("driver ids:", model.get_driver_ids())
-    print("driver fixed flags:", model.nodes[model.get_driver_ids(), 5])
-    print("fixed ids:", model.get_fixed_ids())
-    from viz_utils import render_traj_taichi3d
+    audio = model.render_audio_offline(
+        seconds=T * model.dt,   # align with what you simulated
+        fs=fs,
+        observable='pos', 
+        axis='all',
+        listener_ids=model.get_driver_ids(),
+        layout='mono',
+        pan_method='by_position',
+        hp=True,
+        gain=0.1
+    )  # [T_audio, 2]
 
-    plot_model_graph_3d(model)
-    render_traj_taichi3d(traj, model.edge_index)
+    # Save or play (example with soundfile/sounddevice)
+    # pip install soundfile sounddevice
+    import soundfile as sf, sounddevice as sd
+    sf.write("mass_spring.wav", audio.cpu().numpy(), 44100)
+    sd.play(audio.cpu().numpy(), 44100); sd.wait()

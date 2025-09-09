@@ -151,10 +151,10 @@ def _fix_taichi_frame(window, img, target_size=None):
     return img
 
 def render_traj_taichi3d(traj, edge_index, masses=None, radii=None, k=None,
-                         out_path="traj3d.mp4", fps=60, sim_rate=1000):
+                         out_path="traj3d.mp4", fps=30, sim_rate=1000):
     if hasattr(traj, "detach"): traj = traj.detach().cpu().numpy()
     if hasattr(edge_index, "detach"): edge_index = edge_index.detach().cpu().numpy()
-    steps_per_frame = int(1000 / 60)  # 16
+    steps_per_frame = int(44100 / fps)  # 16
     traj = traj[::steps_per_frame]
     T, N, _ = traj.shape
     i, j = edge_index
