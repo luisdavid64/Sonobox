@@ -7,9 +7,9 @@
   "geometry": {
     "numLayers": 3,
     "numNodesPerLayer" : [3,13,11],
-    "distance": 10.0, // in mm
+    "distance": 10.0,
     "massesRadius": 3.0,
-    "dy": 26,    // This is numNodes
+    "dy": 26, 
     "dx": 1,
     "dz": 1,
     "interactionType": "SECOND"
