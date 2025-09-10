@@ -1,4 +1,4 @@
-from pathlib import Path
+from pathli import Path
 import datetime
 import unicodedata
 import re
@@ -22,7 +22,7 @@ from functools import partial
 from collections import defaultdict
 import numbers
 
-from text2fx.constants import EQ_freq_bands, SAMPLE_RATE, EQ_GAINS_PATH, DEVICE
+from mi2fx.constants import EQ_freq_bands, SAMPLE_RATE, EQ_GAINS_PATH, DEVICE
 
 def norm(val, min_val, max_val):
     return (val - min_val) / (max_val - min_val)

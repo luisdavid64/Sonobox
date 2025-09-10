@@ -13,8 +13,8 @@ from torch.utils.tensorboard import SummaryWriter
 import json
 # from msclap import CLAP
 
-from text2fx.core import Channel, AbstractCLAPWrapper, Distortion, create_save_dir, preprocess_audio, detensor_dict, slugify
-from text2fx.constants import RUNS_DIR, SAMPLE_RATE, DEVICE
+from mi2fx.core import Channel, AbstractCLAPWrapper, Distortion, create_save_dir, preprocess_audio, detensor_dict, slugify
+from mi2fx.constants import RUNS_DIR, SAMPLE_RATE, DEVICE
 
 
 """
@@ -35,7 +35,7 @@ def get_model(model_choice: str):
         from text2fx.laionclap import LAIONCLAPWrapper
         model = LAIONCLAPWrapper()
     elif model_choice == "ms_clap":
-        from text2fx.msclap import MSCLAPWrapper
+        from mi2fx.msclap import MSCLAPWrapper
         model = MSCLAPWrapper()
     else:
         raise ValueError('choose a model1!!!!!!')

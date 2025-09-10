@@ -4,9 +4,9 @@ import torch
 
 from audiotools import AudioSignal
 
-import text2fx.core as tc
-from text2fx.__main__ import text2fx
-from text2fx.constants import SAMPLE_RATE, DEVICE
+import mi2fx.core as tc
+from DifferentiableMiPhysics.mi2fx.text2fx_main import text2fx
+from mi2fx.constants import SAMPLE_RATE, DEVICE
 
 """
 Script to process a single audio file with a given FX chain to match a description.
@@ -59,8 +59,8 @@ def main(audio_path: Union[str, Path, AudioSignal],
     print(f'1. processing input ... {audio_path}')
 
     # Create FX channel
-    mi_simulation = tc.create_channel(fx_chain)
-    print(f'2. created channel from {fx_chain} ... {mi_simulation.modules}')
+    fx_channel = tc.create_channel(fx_chain)
+    print(f'2. created channel from {fx_chain} ... {fx_channel.modules}')
 
     # Apply text-to-FX processing
     print(f'3. applying text2fx ..., target {text_target}')
