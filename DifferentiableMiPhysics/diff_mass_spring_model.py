@@ -42,7 +42,9 @@ class MassSpringModel(nn.Module):
 
         # ----- per-mass parameters -----
         mass_from_nodes = nodes[:, 3].clamp_min(1e-12)
-        self.mass = nn.Parameter(mass_from_nodes.clone())
+        # self.mass = nn.Parameter(mass_from_nodes.clone())
+        # We can optimize only inv_mass to keep positivity
+        self.mass = self.register_buffer("mass", mass_from_nodes.clone())
         inv_mass_init = 1.0 / mass_from_nodes  # per miPhysics
         self.inv_mass = nn.Parameter(inv_mass_init.clone())
         self.radius    = nn.Parameter(nodes[:, 4].clone(), requires_grad=False)
@@ -54,7 +56,8 @@ class MassSpringModel(nn.Module):
         # springs columns: [stiffness, edge_damping, rest_len, di, dj, dk]
         self.k      = nn.Parameter(springs[:, 0].clone())  # [E]
         self.z = nn.Parameter(springs[:, 1].clone())  # [E]
-        self.rest   = nn.Parameter(springs[:, 2].clone())  # [E] (will be overwritten by geometric L0 below)
+        # We do not optimize rest length directly, but compute from geometry
+        self.register_buffer("rest", springs[:, 2].clone())  # [E] (will be overwritten by geometric L0 below)
 
         # ----- state -----
         # Rest configuration (world positions) from nodes[:, :3]
@@ -441,7 +444,6 @@ if __name__ == "__main__":
     # # Save spectogram of audio
     # print("plotting spectrogram")
     # plot_spectrogram(audio=audio, fs=fs)
-    exit()
 
     loss = torch.mean(audio**2)
     print("Audio loss:", loss.item())
@@ -450,6 +452,5 @@ if __name__ == "__main__":
     # Example: inspect gradients exist
     def mean_abs(x): return float(x.detach().abs().mean().cpu())
     print("grad|K|   :", mean_abs(model.k.grad))
-    print("grad|rest|:", mean_abs(model.rest.grad))
     print("grad|invM|:", mean_abs(model.inv_mass.grad))
     print("grad|edgeZ|:", mean_abs(model.z.grad))
