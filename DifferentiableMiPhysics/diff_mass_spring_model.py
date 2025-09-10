@@ -429,12 +429,12 @@ class MassSpringModel(nn.Module):
         # mix to target layout
         audio = self.mix_down(audio_mc, layout=layout, method=pan_method, listener_ids=listener_ids)
 
-
         # final gain & clamp
         audio = torch.clamp(audio * gain, -1, 1)
         fade_len = int(0.1 * fs)  # 600 ms fade-in
         fade = torch.linspace(0, 1, fade_len).unsqueeze(-1).to(device)
         audio[:fade_len, :] *= fade
+        audio = audio.squeeze()
 
         return audio  # [T_audio, K]
 
@@ -452,6 +452,12 @@ class MassSpringModel(nn.Module):
         self.m_pos  = self.rest_pos.clone() if reset_to_rest else self.m_pos.detach()
         self.m_posR = self.rest_pos.clone() if reset_to_rest else self.m_posR.detach()
         self.m_frc  = torch.zeros_like(self.m_frc)
+        # Make sure values are non negative with relu
+        with torch.no_grad():
+            self.inv_mass.data.clamp_min_(1e-12)
+            self.k.data.clamp_min_(0.0)
+            self.z.data.clamp_min_(0.0)
+            self.fric.data.clamp_min_(0.0)
 
 
 if __name__ == "__main__":
@@ -462,8 +468,6 @@ if __name__ == "__main__":
         "../model_configs/sonobox_data/baselines/biosonix_3D.json",
         device=device, dt=1/fs
     )
-    model.to_json("test_output.json")
-    exit()
     model.train()  # enable grads
 
     visualize = False
