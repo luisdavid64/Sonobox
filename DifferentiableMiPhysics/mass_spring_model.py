@@ -244,6 +244,13 @@ class MassSpringModel(nn.Module):
         ids = self.get_ids(self.drivers)
         return torch.tensor(ids, device=self.nodes.device, dtype=torch.long)
 
+    def get_listener_ids(self):
+        if self.listeners is None:
+            return None
+        # Can we turn into a function
+        ids = self.get_ids(self.listeners)
+        return torch.tensor(ids, device=self.nodes.device, dtype=torch.long)
+
     def get_ids(self, tensor):
         return [(i * self.dimY + j) * self.dimZ + k for (i, j, k) in tensor.tolist()]
 
@@ -274,7 +281,8 @@ class MassSpringModel(nn.Module):
         prev_abs = self.m_pos.clone()  # for vel if needed
 
         for t in range(steps):
-            # one physics step
+            if t == 0 or t==8000:
+                self.apply_force_on_drivers((3,3,3))
             self.compute()
 
             # absolute pos
@@ -374,16 +382,16 @@ class MassSpringModel(nn.Module):
         return y  # [T, K]
 
     @torch.no_grad()
-    def render_audio_offline(self,
-                             seconds: float,
-                             fs: int = 16000,
-                             observable: str = "pos",
-                             axis: str = "all",
-                             listener_ids: torch.Tensor | None = None,
-                             layout: str = "stereo",
-                             pan_method: str = "by_position",
-                             hp: bool = True,
-                             gain: float = 1.0) -> torch.Tensor:
+    def render_audio(self,
+                     seconds: float,
+                     fs: int = 16000,
+                     observable: str = "pos",
+                     axis: str = "all",
+                     listener_ids: torch.Tensor | None = None,
+                     layout: str = "stereo",
+                     pan_method: str = "by_position",
+                     hp: bool = True,
+                     gain: float = 1.0) -> torch.Tensor:
         """
         End-to-end: simulate at current dt for `seconds`, capture listeners,
         resample to `fs`, downmix, return audio [T_audio, K].
@@ -410,7 +418,7 @@ class MassSpringModel(nn.Module):
         audio = self.mix_down(audio_mc, layout=layout, method=pan_method, listener_ids=listener_ids)
 
         # final gain & clamp
-        audio = torch.clamp(audio * gain, -1.0, 1.0)
+        audio = audio * gain
 
         return audio  # [T_audio, K]
 
@@ -420,36 +428,38 @@ if __name__ == "__main__":
 
     model = MassSpringModel.from_json("../model_configs/sonobox_data/baselines/biosonix_3D.json", device=device, dt=1/fs)
     model.eval()
+    visualize = False
 
 
-    traj = []
+    # traj = []
     T = int(16000)  # 1 second at 16kHz
-    x = None
-    v = None
-    example_driver_id = model.get_driver_ids()[0].item()
-    print("Example driver id:", example_driver_id)
-    for t in range(T):
-        if t == 0 or t == 4000 or t == 8000:
-            model.apply_force_on_drivers((3,3,3))
-        x = model.compute()
-        #if t == 0 or t == 8000 or t == 4000:
-        print(f"Step {t}: driver pos {x[example_driver_id].detach().cpu().numpy()}")
-        traj.append(x)
-    traj = torch.stack(traj)  # [T,N,dim]
+    # x = None
+    # v = None
+    # example_driver_id = model.get_driver_ids()[0].item()
+    # print("Example driver id:", example_driver_id)
+    # for t in range(T):
+    #     if t == 0 or t == 8000 or t == 14000 or t == 28000:
+    #         model.apply_force_on_drivers((3,3,3))
+    #     x = model.compute()
+    #     #if t == 0 or t == 8000 or t == 4000:
+    #     print(f"Step {t}: driver pos {x[example_driver_id].detach().cpu().numpy()}")
+    #     traj.append(x)
+    # traj = torch.stack(traj)  # [T,N,dim]
 
-    plot_model_graph_3d(model)
-    render_traj_taichi3d(traj.detach().cpu().numpy(), model.edge_index.cpu().numpy())
+    if visualize:
+        plot_model_graph_3d(model)
+        render_traj_taichi3d(traj.detach().cpu().numpy(), model.edge_index.cpu().numpy())
 
-    audio = model.render_audio_offline(
+    audio = model.render_audio(
         seconds=T * model.dt,   # align with what you simulated
         fs=fs,
         observable='pos', 
         axis='all',
-        listener_ids=model.get_driver_ids(),
+        listener_ids=model.get_listener_ids(),
         layout='mono',
         pan_method='by_position',
         hp=True,
-        gain=0.1
+        gain=3
     )  # [T_audio, 2]
 
     # Save or play (example with soundfile/sounddevice)
