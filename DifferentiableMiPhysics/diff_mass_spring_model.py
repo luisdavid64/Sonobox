@@ -182,16 +182,9 @@ class MassSpringModel(nn.Module):
         """
         Run N ticks. If substeps>1, splits dt evenly (useful for stiff systems / audio blocks).
         """
-        if substeps == 1:
-            for _ in range(N):
+        for _ in range(N):
+            for _ in range(substeps):
                 self.compute()
-        else:
-            base_dt = self.dt
-            self.dt = base_dt / substeps
-            for _ in range(N):
-                for _ in range(substeps):
-                    self.compute()
-            self.dt = base_dt
         return self.m_pos
 
     # ---------------- utilities ----------------
@@ -276,6 +269,7 @@ class MassSpringModel(nn.Module):
         # caches
         prev_abs = self.m_pos
         prev_vel = torch.zeros_like(self.m_pos)
+
 
         for t in range(steps):
             if t == 0 or t == 8000:
@@ -448,7 +442,7 @@ if __name__ == "__main__":
     import soundfile as sf, sounddevice as sd
     sf.write("mass_spring.wav", audio.detach().cpu().numpy(), 16000)
     sd.play(audio.detach().cpu().numpy(), 16000); sd.wait()
-    # exit()
+    exit()
 
     loss = torch.mean(audio**2)
     print("Audio loss:", loss.item())
