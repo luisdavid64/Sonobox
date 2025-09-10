@@ -4,6 +4,7 @@ from typing import Optional
 from topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
 from viz_utils import plot_model_graph_3d, render_traj_taichi3d
 from audio_helpers import _axis_pick_t, _dc_block_t, _stereo_mixer_t
+import torchaudio
 
 
 class MassSpringModel(nn.Module):
@@ -11,14 +12,14 @@ class MassSpringModel(nn.Module):
     miPhysics-style engine:
       - per-mass state: m_pos, m_posR (delayed pos), m_frc (force buffer)
       - per-mass params: inv_mass, mass_damp, radius
-      - per-edge params: k (stiffness), rest (rest length), edge_z (relative damping)
+      - per-edge params: k (stiffness), rest (rest length), z (relative damping)
       - tick order: reset_forces -> drivers -> interactions -> constraints -> integrate -> listeners
     """
     def __init__(self, nodes, edge_index, springs,
                  drivers=None, listeners=None, config=None,
                  dimX=None, dimY=None, dimZ=None,
                  interactionType="FIRST", bounds=[],
-                 dt: float = 1/44100):
+                 dt: float = 1/44100, friction: float = 0.25):
         super().__init__()
         # ----- topology & meta -----
         self.nodes = nodes              # [N, 8] (x,y,z,mass,radius,fixed,driver,listener)
@@ -52,7 +53,7 @@ class MassSpringModel(nn.Module):
         # ----- per-edge parameters (from springs builder) -----
         # springs columns: [stiffness, edge_damping, rest_len, di, dj, dk]
         self.k      = nn.Parameter(springs[:, 0].clone())  # [E]
-        self.edge_z = nn.Parameter(springs[:, 1].clone())  # [E]
+        self.z = nn.Parameter(springs[:, 1].clone())  # [E]
         self.rest   = nn.Parameter(springs[:, 2].clone())  # [E] (will be overwritten by geometric L0 below)
 
         # ----- state -----
@@ -82,7 +83,7 @@ class MassSpringModel(nn.Module):
         self._driver_ids = self.get_driver_ids()
 
         # Global
-        self.fric = nn.Parameter(torch.tensor(0.25, device=self.nodes.device, dtype=self.nodes.dtype))
+        self.fric = nn.Parameter(torch.tensor(friction, device=self.nodes.device, dtype=self.nodes.dtype))
         self.register_buffer("gravity", torch.zeros(3, device=self.nodes.device, dtype=self.nodes.dtype))
         # self.use_dt_scaling = False
 
@@ -131,7 +132,7 @@ class MassSpringModel(nn.Module):
 
         # scalar link force (Hooke + dashpot on distance change)
         f_el   = - self.k      * (m_dist - self.rest)          # [E]
-        f_damp = - self.edge_z * (m_dist - self.m_prevDist)    # [E]
+        f_damp = - self.z * (m_dist - self.m_prevDist)    # [E]
         lnkFrc = f_el + f_damp                                 # [E]
 
         f_vec = lnkFrc.unsqueeze(-1) * dirv                    # [E,3]
@@ -214,6 +215,7 @@ class MassSpringModel(nn.Module):
         listeners = torch.tensor([parse_mass_name(n) for n in config.get("sonification_set_up", {}).get("listeners", [])],
                                  device=device) if "sonification_set_up" in config else None
         bounds = config.get("bounds", [])
+        friction = config.get("global_friction", 0.25)
 
         nodes = build_grid_nodes(dimX, dimY, dimZ, dist,
                                  mass=mass, radius=mass_radius,
@@ -224,7 +226,7 @@ class MassSpringModel(nn.Module):
                                                   interaction_type=interactionType, device=device)
         return cls(nodes, edge_index, springs, drivers, listeners, config,
                    dimX=dimX, dimY=dimY, dimZ=dimZ,
-                   interactionType=interactionType, bounds=bounds, dt=dt)
+                   interactionType=interactionType, bounds=bounds, dt=dt, friction=friction)
 
     @classmethod
     def from_json(cls, path: str, device: Optional[torch.device] = None, dt: float = 1/16000):
@@ -424,7 +426,6 @@ if __name__ == "__main__":
 
     if visualize:
         plot_model_graph_3d(model)
-        # Example: render a trajectory if you cache it yourself
         # render_traj_taichi3d(traj.detach().cpu().numpy(), model.edge_index.cpu().numpy())
 
     # Render 1s of audio and backprop a simple power loss
@@ -440,6 +441,10 @@ if __name__ == "__main__":
         hp=True,
         gain=3.0
     )  # [T_audio, 1]
+    import soundfile as sf, sounddevice as sd
+    sf.write("mass_spring.wav", audio.detach().cpu().numpy(), 16000)
+    sd.play(audio.detach().cpu().numpy(), 16000); sd.wait()
+    exit()
 
     loss = torch.mean(audio**2)
     print("Audio loss:", loss.item())
@@ -450,4 +455,4 @@ if __name__ == "__main__":
     print("grad|K|   :", mean_abs(model.k.grad))
     print("grad|rest|:", mean_abs(model.rest.grad))
     print("grad|invM|:", mean_abs(model.inv_mass.grad))
-    print("grad|edgeZ|:", mean_abs(model.edge_z.grad))
+    print("grad|edgeZ|:", mean_abs(model.z.grad))

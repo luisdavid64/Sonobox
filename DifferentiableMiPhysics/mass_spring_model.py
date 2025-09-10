@@ -17,7 +17,7 @@ class MassSpringModel(nn.Module):
                  drivers=None, listeners=None, config=None,
                  dimX=None, dimY=None, dimZ=None,
                  interactionType="FIRST", bounds=[],
-                 dt: float = 1/44100):
+                 dt: float = 1/44100, friction: float = 0.25):
         super().__init__()
         # ----- topology & meta -----
         self.nodes = nodes              # [N, 8] (x,y,z,mass,radius,fixed,driver,listener)
@@ -80,7 +80,7 @@ class MassSpringModel(nn.Module):
         self._driver_ids = self.get_driver_ids()
 
         # Global
-        self.fric = nn.Parameter(torch.tensor(0.25))
+        self.fric = nn.Parameter(torch.tensor(friction))
         self.register_buffer("gravity", torch.zeros(3, device=self.nodes.device, dtype=self.nodes.dtype))
         #self.use_dt_scaling = False
 
@@ -219,6 +219,8 @@ class MassSpringModel(nn.Module):
                   if "sonification_set_up" in config else None
         bounds = config.get("bounds", [])
 
+        friction = config.get("friction", 0.25)
+
         nodes = build_grid_nodes(dimX, dimY, dimZ, dist,
                                  mass=mass, radius=mass_radius,
                                  drivers=drivers, listeners=listeners,
@@ -228,7 +230,7 @@ class MassSpringModel(nn.Module):
                                                   interaction_type=interactionType, device=device)
         return cls(nodes, edge_index, springs, drivers, listeners, config,
                    dimX=dimX, dimY=dimY, dimZ=dimZ,
-                   interactionType=interactionType, bounds=bounds, dt=dt)
+                   interactionType=interactionType, bounds=bounds, dt=dt, friction=friction)
                 
     @classmethod
     def from_json(cls, path: str, device: Optional[torch.device] = None, dt: float = 1/16000):
@@ -280,7 +282,7 @@ class MassSpringModel(nn.Module):
         prev_abs = self.m_pos.clone()  # for vel if needed
 
         for t in range(steps):
-            if t == 0 or t==8000:
+            if t==8000:
                 self.apply_force_on_drivers((10,10,10))
             self.compute()
 
