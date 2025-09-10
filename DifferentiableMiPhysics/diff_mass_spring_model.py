@@ -315,9 +315,6 @@ class MassSpringModel(nn.Module):
             if observable == "pos":
                 val = pos_abs[ids]                                   # [C,3]
                 out[t] = _axis_pick_t(val, axis)                     # [C]
-            elif observable == "disp":
-                val = (pos_abs - self.rest_pos)[ids]
-                out[t] = _axis_pick_t(val, axis)                     # [C]
             elif observable == "force":
                 # recompute spring forces at *current* state
                 Fspr = self.spring_damper_forces()   # [N,3]
