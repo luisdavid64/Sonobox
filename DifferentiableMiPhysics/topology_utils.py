@@ -260,21 +260,35 @@ def wrap_wireframe(edge_index, springs, dimX, dimY, dimZ, dist, stiffness=1e-3, 
     return edge_index_combined, springs_combined
 
 def dedupe_undirected(edge_index: torch.Tensor, springs: torch.Tensor):
-    # edge_index: [2, E_dir], springs: [E_dir, ...] (or [E_dir] if already split)
+    # edge_index: [2, E_dir], springs: [E_dir, ...]
     i, j = edge_index[0], edge_index[1]
     lo = torch.minimum(i, j)
     hi = torch.maximum(i, j)
-    pairs = torch.stack([lo, hi], dim=1)                       # [E_dir,2]
+    pairs = torch.stack([lo, hi], dim=1)  # [E_dir, 2]
 
-    # unique undirected pairs + inverse map
-    uniq, inv = torch.unique(pairs, dim=0, return_inverse=True)  # uniq: [E_und,2], inv: [E_dir]
-    E_und = uniq.shape[0]
+    # ---- Hashing step (works on MPS) ----
+    # Assumes node indices fit in 32 bits
+    hashes = lo.to(torch.int64) << 32 | hi.to(torch.int64)
 
-    # merge duplicate attributes by averaging
-    springs_und = torch.zeros(E_und, springs.shape[1], device=springs.device, dtype=springs.dtype)
+    # Unique hashes + inverse map
+    uniq_hashes, inv = torch.unique(hashes, return_inverse=True)
+    E_und = uniq_hashes.shape[0]
+
+    # Reconstruct unique pairs from hashes
+    lo_uniq = (uniq_hashes >> 32).to(lo.dtype)
+    hi_uniq = (uniq_hashes & ((1 << 32) - 1)).to(hi.dtype)
+    edge_und = torch.stack([lo_uniq, hi_uniq], dim=0)  # [2, E_und]
+
+    # ---- Merge attributes by averaging ----
+    if springs.ndim == 1:
+        springs = springs.unsqueeze(1)  # [E_dir, 1]
+
+    springs_und = torch.zeros(
+        E_und, springs.shape[1], device=springs.device, dtype=springs.dtype
+    )
     springs_und.index_add_(0, inv, springs)
+
     counts = torch.bincount(inv, minlength=E_und).clamp_min(1).float().unsqueeze(1)
     springs_und = springs_und / counts
 
-    edge_und = uniq.T.contiguous()  # [2, E_und]
     return edge_und, springs_und
