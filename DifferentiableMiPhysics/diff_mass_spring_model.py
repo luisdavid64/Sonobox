@@ -19,7 +19,7 @@ class MassSpringModel(nn.Module):
                  drivers=None, listeners=None, config=None,
                  dimX=None, dimY=None, dimZ=None,
                  interactionType="FIRST", bounds=[],
-                 dt: float = 1/44100, friction: float = 0.25):
+                 dt: float = 1/44100, friction: float = 0.25, gain=10):
         super().__init__()
         # ----- topology & meta -----
         self.nodes = nodes              # [N, 8] (x,y,z,mass,radius,fixed,driver,listener)
@@ -29,6 +29,7 @@ class MassSpringModel(nn.Module):
         self.config = config
         self.drivers = drivers
         self.listeners = listeners
+        self.gain = gain
 
         # Deduplicate edges (i<j) and merge attributes
         edge_index, springs = dedupe_undirected(edge_index, springs)
@@ -278,7 +279,7 @@ class MassSpringModel(nn.Module):
 
         for t in range(steps):
             if t == 0 or t == 8000:
-                self.apply_force_on_drivers((10, 10, 10))
+                self.apply_force_on_drivers((3,3,3))
             self.compute()
 
             # absolute pos
@@ -380,12 +381,16 @@ class MassSpringModel(nn.Module):
                      layout: str = "stereo",
                      pan_method: str = "by_position",
                      hp: bool = True,
-                     gain: float = 1.0) -> torch.Tensor:
+                     gain: float | None = None) -> torch.Tensor:
         """
         End-to-end: simulate at current dt for `seconds`, capture listeners,
         resample to `fs`, downmix, return audio [T_audio, K].
         """
         device = self.nodes.device
+
+        if gain is None:
+            gain = self.gain
+        
         if listener_ids is None:
             ids = self.get_driver_ids()
             if ids is None or ids.numel() == 0:
@@ -439,7 +444,6 @@ if __name__ == "__main__":
         layout='mono',
         pan_method='by_position',
         hp=True,
-        gain=3.0
     )  # [T_audio, 1]
     import soundfile as sf, sounddevice as sd
     sf.write("mass_spring.wav", audio.detach().cpu().numpy(), 16000)
