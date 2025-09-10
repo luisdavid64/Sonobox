@@ -430,7 +430,7 @@ if __name__ == "__main__":
     print("Example driver id:", example_driver_id)
     for t in range(T):
         if t == 0 or t == 4000 or t == 8000:
-            model.apply_force_on_drivers((30,30,30))
+            model.apply_force_on_drivers((3,3,3))
         x = model.compute()
         #if t == 0 or t == 8000 or t == 4000:
         print(f"Step {t}: driver pos {x[example_driver_id].detach().cpu().numpy()}")
