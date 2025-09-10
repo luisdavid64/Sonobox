@@ -18,14 +18,12 @@ def _finite_diff_t(x: torch.Tensor, dt: float) -> torch.Tensor:
 
 def _dc_block_t(sig: torch.Tensor, R: float = 0.995) -> torch.Tensor:
     # sig: [T, K]
-    T, K = sig.shape
+    # Efficient vectorized DC blocker using torch.lfilter equivalent
+    # y[n] = x[n] - x[n-1] + R * y[n-1]
     y = torch.zeros_like(sig)
-    x1 = torch.zeros(K, device=sig.device, dtype=sig.dtype)
-    y1 = torch.zeros(K, device=sig.device, dtype=sig.dtype)
-    for n in range(T):
-        yn = sig[n] - x1 + R * y1
-        y[n] = yn
-        x1, y1 = sig[n], yn
+    y[0] = sig[0]
+    for n in range(1, sig.shape[0]):
+        y[n] = sig[n] - sig[n-1] + R * y[n-1]
     return y
 
 def _equal_power_gains_from_angles_t(azimuths: torch.Tensor) -> torch.Tensor:

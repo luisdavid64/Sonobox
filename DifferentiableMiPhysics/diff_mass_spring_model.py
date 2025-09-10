@@ -448,7 +448,7 @@ if __name__ == "__main__":
     import soundfile as sf, sounddevice as sd
     sf.write("mass_spring.wav", audio.detach().cpu().numpy(), 16000)
     sd.play(audio.detach().cpu().numpy(), 16000); sd.wait()
-    exit()
+    # exit()
 
     loss = torch.mean(audio**2)
     print("Audio loss:", loss.item())
