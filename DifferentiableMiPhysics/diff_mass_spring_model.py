@@ -2,9 +2,8 @@ import torch
 from torch import nn
 from typing import Optional
 from topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
-from viz_utils import plot_model_graph_3d, render_traj_taichi3d
+from viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram
 from audio_helpers import _axis_pick_t, _dc_block_t, _stereo_mixer_t
-import torchaudio
 
 
 class MassSpringModel(nn.Module):
@@ -272,7 +271,7 @@ class MassSpringModel(nn.Module):
 
 
         for t in range(steps):
-            if t == 0 or t == 8000:
+            if t == 8000:
                 self.apply_force_on_drivers((3,3,3))
             self.compute()
 
@@ -281,23 +280,13 @@ class MassSpringModel(nn.Module):
             if observable == "pos":
                 val = pos_abs[ids]                                   # [C,3]
                 out[t] = _axis_pick_t(val, axis)                     # [C]
-            elif observable == "vel" or observable == "acc":
-                vel = (pos_abs - prev_abs) / self.dt                 # [N,3]
-                if observable == "vel":
-                    val = vel[ids]                                   # [C,3]
-                    out[t] = _axis_pick_t(val, axis)
-                else:
-                    acc = (vel - prev_vel) / self.dt
-                    val = acc[ids]
-                    out[t] = _axis_pick_t(val, axis)
-                prev_vel = vel
             elif observable == "force":
                 # recompute spring forces at *current* state
                 Fspr = self.spring_damper_forces()   # [N,3]
                 val = Fspr[ids]
                 out[t] = _axis_pick_t(val, axis)
             else:
-                raise ValueError("observable must be 'pos' | 'vel' | 'acc' | 'force'.")
+                raise ValueError("observable must be 'pos' | 'force'.")
 
             prev_abs = pos_abs
 
@@ -439,9 +428,15 @@ if __name__ == "__main__":
         pan_method='by_position',
         hp=True,
     )  # [T_audio, 1]
-    import soundfile as sf, sounddevice as sd
-    sf.write("mass_spring.wav", audio.detach().cpu().numpy(), 16000)
-    sd.play(audio.detach().cpu().numpy(), 16000); sd.wait()
+    # import soundfile as sf, sounddevice as sd
+    # sf.write("mass_spring.wav", audio.detach().cpu().numpy(), 16000)
+    # sd.play(audio.detach().cpu().numpy(), 16000); sd.wait()
+    # Can we play the audio with another library
+    # Save spectogram of audio
+    plot_spectrogram(audio=audio, fs=fs)
+    import torchaudio
+    torchaudio.save("mass_spring_torch.wav", audio.detach().cpu().T, fs)
+    torchaudio.io.play_audio(audio, fs)
     exit()
 
     loss = torch.mean(audio**2)
