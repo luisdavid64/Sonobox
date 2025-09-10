@@ -151,26 +151,14 @@ def _fix_taichi_frame(window, img, target_size=None):
     return img
 
 def render_traj_taichi3d(traj, edge_index, masses=None, radii=None, k=None,
-                         out_path="traj3d.mp4", fps=30, sim_rate=1000):
+                         out_path="traj3d.mp4", fps=30, sim_rate=16000):
     if hasattr(traj, "detach"): traj = traj.detach().cpu().numpy()
     if hasattr(edge_index, "detach"): edge_index = edge_index.detach().cpu().numpy()
-    steps_per_frame = int(16000 / fps)  # 16
+    steps_per_frame = int(sim_rate / fps)
     traj = traj[::steps_per_frame]
     T, N, _ = traj.shape
     i, j = edge_index
     E = i.shape[0]
-
-    # Optional physics arrays
-    masses = masses.detach().cpu().numpy() if masses is not None else np.ones(N)
-    radii  = radii.detach().cpu().numpy()  if radii  is not None else np.full(N, 0.02)
-    k      = k.detach().cpu().numpy()      if k      is not None else np.ones(E)
-
-    # Normalize for visualization
-    k_min, k_max = k.min(), k.max()
-    if k_max > k_min:
-        k_norm = (k - k_min) / (k_max - k_min)
-    else:
-        k_norm = np.zeros_like(k)
 
     # Compute bounding box of all trajectories
     mins = traj.reshape(-1, 3).min(0)
@@ -198,7 +186,7 @@ def render_traj_taichi3d(traj, edge_index, masses=None, radii=None, k=None,
         scene.ambient_light((0.8, 0.8, 0.8))
 
         # Nodes
-        scene.particles(particles, radius=radii.mean()*50, color=(1.0, 0.3, 0.3))
+        scene.particles(particles, radius=1, color=(1.0, 0.3, 0.3))
 
         # Springs
         P = traj[t]
