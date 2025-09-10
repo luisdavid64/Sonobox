@@ -1,3 +1,4 @@
+import os
 import torch
 from torch import nn
 from typing import Optional
@@ -5,6 +6,7 @@ from topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirec
 from viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram
 from audio_helpers import _axis_pick_t, _dc_block_t, _stereo_mixer_t
 torch.autograd.set_detect_anomaly(True)
+import json
 
 class MassSpringModel(nn.Module):
     """
@@ -16,7 +18,7 @@ class MassSpringModel(nn.Module):
     """
     def __init__(self, nodes, edge_index, springs,
                  drivers=None, listeners=None, config=None,
-                 dimX=None, dimY=None, dimZ=None,
+                 dimX=None, dimY=None, dimZ=None, dist=None,
                  interactionType="FIRST", bounds=[],
                  dt: float = 1/44100, friction: float = 0.25, gain=10):
         super().__init__()
@@ -39,12 +41,12 @@ class MassSpringModel(nn.Module):
         self.E = self.edge_index.shape[1]
         self.dim = 3
         self.dt = float(dt)
+        self.dist = dist
 
         # ----- per-mass parameters -----
         mass_from_nodes = nodes[:, 3].clamp_min(1e-12)
-        # self.mass = nn.Parameter(mass_from_nodes.clone())
         # We can optimize only inv_mass to keep positivity
-        self.mass = self.register_buffer("mass", mass_from_nodes.clone())
+        self.register_buffer("mass", mass_from_nodes.clone())
         inv_mass_init = 1.0 / mass_from_nodes  # per miPhysics
         self.inv_mass = nn.Parameter(inv_mass_init.clone())
         self.radius    = nn.Parameter(nodes[:, 4].clone(), requires_grad=False)
@@ -203,12 +205,63 @@ class MassSpringModel(nn.Module):
                                                   stiffness=stiffness, damping=edge_damp,
                                                   interaction_type=interactionType, device=device)
         return cls(nodes, edge_index, springs, drivers, listeners, config,
-                   dimX=dimX, dimY=dimY, dimZ=dimZ,
+                   dimX=dimX, dimY=dimY, dimZ=dimZ, dist=dist,
                    interactionType=interactionType, bounds=bounds, dt=dt, friction=friction)
+
+    # Convert 
+    def to_json(self, path: str):
+        # Convert fields to JSON-serializable types, as done in from_config
+        def tensor_to_list(tensor):
+            return tensor.detach().cpu().tolist() if tensor is not None else []
+        def float_or_list(value):
+            if isinstance(value, (list, tuple)):
+                return [float(v) for v in value]
+            return float(value)
+        def int_or_list(value):
+            if isinstance(value, (list, tuple)):
+                return [int(v) for v in value]
+            return int(value)   
+        def parse_mass_name(name):
+            p = name.split("_")
+            if len(p) != 4 or p[0] != "m":
+                raise ValueError(f"Invalid mass name: {name}")
+            return tuple(int(x) for x in p[1:])
+        def mass_name(i, j, k):
+            return f"m_{i}_{j}_{k}"
+        geom = {
+            "dx": int_or_list(self.dimX),
+            "dy": int_or_list(self.dimY),
+            "dz": int_or_list(self.dimZ),
+            "distance": float_or_list(self.dist),
+            "massesRadius": float_or_list(self.radius[0].item()),
+            "interactionType": self.interactionType,
+        }
+        params = {
+            "M": float_or_list(torch.mean(1/self.inv_mass).item()),
+            "K": float_or_list(torch.mean(self.k).item()),
+            "C": float_or_list(torch.mean(self.z).item()),
+        }
+        sonification_set_up = {
+            "drivers": [mass_name(*idx) for idx in tensor_to_list(self.drivers)],
+            "listeners": [mass_name(*idx) for idx in tensor_to_list(self.listeners)],
+        }
+        config = {
+            "geometry": geom,
+            "parameters": params,
+            "sonification_set_up": sonification_set_up,
+            "model": "3D",
+            "global_friction": float(self.fric.item()),
+            "bounds": self.bounds,
+            
+        }
+        with open(path, "w") as f:
+            json.dump(config, f, indent=4)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
 
     @classmethod
     def from_json(cls, path: str, device: Optional[torch.device] = None, dt: float = 1/16000):
-        import json
         with open(path, "r") as f:
             config = json.load(f)
         return cls.from_config(config, device=device, dt=dt)
@@ -261,6 +314,9 @@ class MassSpringModel(nn.Module):
             pos_abs = self.m_pos
             if observable == "pos":
                 val = pos_abs[ids]                                   # [C,3]
+                out[t] = _axis_pick_t(val, axis)                     # [C]
+            if observable == "disp":
+                val = (pos_abs - self.rest_pos)[ids]
                 out[t] = _axis_pick_t(val, axis)                     # [C]
             elif observable == "force":
                 # recompute spring forces at *current* state
@@ -409,6 +465,8 @@ if __name__ == "__main__":
         "../model_configs/sonobox_data/baselines/biosonix_3D.json",
         device=device, dt=1/fs
     )
+    model.to_json("test_output.json")
+    exit()
     model.train()  # enable grads
 
     visualize = False

@@ -19,17 +19,17 @@ if __name__ == "__main__":
         6000: (3, 0, 5),
         # more events...
     }
-    init_k = model.k
-    init_edgeZ = model.z
-    init_fric = model.fric
-    init_invM = model.inv_mass
+    init_k = model.k.clone()
+    init_edgeZ = model.z.clone()
+    init_fric = model.fric.clone()
+    init_invM = model.inv_mass.clone()
 
     # Simulate and get audio
     seconds = 0.5  # seconds
     # Let's optimize for 100 iters to make the audio 0
     iters = 100
     for i in range(iters):
-        model.detach_state()
+        model.detach_state(reset_to_rest=True)
         audio = model.render_audio(seconds=seconds, fs=fs, axis='all', listener_ids=model.get_listener_ids(), layout='mono', events=events)  # [T_audio, 1]
         # Contains nan, optimized values become unstable (i guess invM)
         # print(audio.isnan().any())
@@ -38,6 +38,8 @@ if __name__ == "__main__":
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        import soundfile as sf, sounddevice as sd
+        sf.write(f"mass_spring_{i}.wav", audio.detach().cpu().numpy(), 16000)
         # Print current params vs original at init
         print("  |K|   :", torch.mean(torch.abs(model.k)).item(), " (init ", torch.mean(torch.abs(init_k)).item(), ")")
         print("  |edgeZ|:", torch.mean(torch.abs(model.z)).item(), " (init ", torch.mean(torch.abs(init_edgeZ)).item(), ")")
