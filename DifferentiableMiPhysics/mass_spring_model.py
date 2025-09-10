@@ -262,7 +262,6 @@ class MassSpringModel(nn.Module):
 
     #---------------- audio ----------------
 
-    @torch.no_grad()
     def simulate_listeners(self,
                            steps: int,
                            listener_ids: torch.Tensor,
@@ -282,7 +281,7 @@ class MassSpringModel(nn.Module):
 
         for t in range(steps):
             if t == 0 or t==8000:
-                self.apply_force_on_drivers((3,3,3))
+                self.apply_force_on_drivers((10,10,10))
             self.compute()
 
             # absolute pos
@@ -381,7 +380,6 @@ class MassSpringModel(nn.Module):
 
         return y  # [T, K]
 
-    @torch.no_grad()
     def render_audio(self,
                      seconds: float,
                      fs: int = 16000,
@@ -418,7 +416,7 @@ class MassSpringModel(nn.Module):
         audio = self.mix_down(audio_mc, layout=layout, method=pan_method, listener_ids=listener_ids)
 
         # final gain & clamp
-        audio = audio * gain
+        audio = torch.clamp(audio * gain, -1,1)
 
         return audio  # [T_audio, K]
 
@@ -461,6 +459,12 @@ if __name__ == "__main__":
         hp=True,
         gain=3
     )  # [T_audio, 2]
+
+    # Dummy loss function on audio (e.g. for testing backprop)
+    loss = torch.mean(audio**2)
+    print("Audio loss:", loss.item())
+    loss.backward()
+    exit()
 
     # Save or play (example with soundfile/sounddevice)
     # pip install soundfile sounddevice
