@@ -75,10 +75,6 @@ class MassSpringModel(nn.Module):
         self.register_buffer("m_posR", self.rest_pos.clone())  # delayed position (previous)
         self.register_buffer("m_frc", torch.zeros(self.N, self.dim, device=nodes.device, dtype=nodes.dtype), persistent=False)
 
-        # Optional velocity-control (per-mass), like Mass.triggerVelocityControl in miPhysics
-        self.register_buffer("ctrl_on", torch.zeros(self.N, 1, device=self.m_pos.device, dtype=self.m_pos.dtype))
-        self.register_buffer("ctrl_vel", torch.zeros(self.N, self.dim, device=self.m_pos.device, dtype=self.m_pos.dtype))
-
         # Driver/listener index caches
         self._driver_ids = self.get_driver_ids()
 
@@ -101,20 +97,6 @@ class MassSpringModel(nn.Module):
         ids = self._driver_ids
         if ids is not None and ids.numel() > 0:
             self.applyForce(ids, force_vec)
-
-    def triggerVelocityControl(self, node_indices: torch.Tensor, v_vec):
-        v = torch.as_tensor(v_vec, device=self.m_pos.device, dtype=self.m_pos.dtype).view(1, self.dim)
-        # these controls do not participate in loss; in-place is fine
-        self.ctrl_on.index_fill_(0, node_indices, 1.0)
-        self.ctrl_vel.index_copy_(0, node_indices, v.expand(node_indices.numel(), -1))
-
-    def stopVelocityControl(self, node_indices: Optional[torch.Tensor] = None):
-        if node_indices is None:
-            self.ctrl_on.zero_()
-            self.ctrl_vel.zero_()
-        else:
-            self.ctrl_on.index_fill_(0, node_indices, 0.0)
-            self.ctrl_vel.index_fill_(0, node_indices, 0.0)
 
     # ---------------- interactions (springs) ----------------
     def spring_damper_forces(self):
