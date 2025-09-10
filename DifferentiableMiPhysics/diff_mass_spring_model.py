@@ -373,8 +373,12 @@ class MassSpringModel(nn.Module):
         # mix to target layout
         audio = self.mix_down(audio_mc, layout=layout, method=pan_method, listener_ids=listener_ids)
 
+
         # final gain & clamp
         audio = torch.clamp(audio * gain, -1, 1)
+        fade_len = int(0.600 * fs)  # 600 ms fade-in
+        fade = torch.linspace(0, 1, fade_len).unsqueeze(-1)
+        audio[:fade_len, :] *= fade
 
         return audio  # [T_audio, K]
 
