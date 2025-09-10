@@ -265,8 +265,6 @@ class MassSpringModel(nn.Module):
             else:
                 raise ValueError("observable must be 'pos' | 'force'.")
 
-            prev_abs = pos_abs
-
         return out  # [steps, C]
 
     def resample_to_audio(self,
