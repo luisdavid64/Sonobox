@@ -29,6 +29,7 @@ if __name__ == "__main__":
     for i in range(iters):
         model.detach_state()
         audio = model.render_audio(seconds=seconds, fs=fs, axis='all', listener_ids=model.get_listener_ids(), layout='mono', events=events)  # [T_audio, 1]
+        print(audio.min(), audio.max())
         loss = (audio**2).mean()
         print(f"Iter {i+1}/{iters}, audio power: {loss.item():.6f}")
         optimizer.zero_grad()

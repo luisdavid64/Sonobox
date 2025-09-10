@@ -4,7 +4,7 @@ from typing import Optional
 from topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
 from viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram
 from audio_helpers import _axis_pick_t, _dc_block_t, _stereo_mixer_t
-
+torch.autograd.set_detect_anomaly(True)
 
 class MassSpringModel(nn.Module):
     """
@@ -379,7 +379,7 @@ class MassSpringModel(nn.Module):
 
         # final gain & clamp
         audio = torch.clamp(audio * gain, -1, 1)
-        fade_len = int(0.600 * fs)  # 600 ms fade-in
+        fade_len = int(0.1 * fs)  # 600 ms fade-in
         fade = torch.linspace(0, 1, fade_len).unsqueeze(-1).to(device)
         audio[:fade_len, :] *= fade
 
