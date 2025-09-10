@@ -52,6 +52,7 @@ def build_grid_nodes(dimX: int, dimY: int, dimZ: int,
                 # Fixed corners if requested
                 if fixed_corners and (i in (0, dimX-1)) and (j in (0, dimY-1)) and (k in (0, dimZ-1)):
                     nodes[n, 5] = 1.0
+    print("Setting Bounds:", bounds)
     for bound in bounds:
         if bound == 'Y_LEFT':
             for i in range(1, dimX-1):
@@ -63,6 +64,12 @@ def build_grid_nodes(dimX: int, dimY: int, dimZ: int,
                 for k in range(1, dimZ-1):
                     id = (i * dimY + (dimY-1)) * dimZ + k
                     nodes[id, 5] = 1.0
+        if bound == "CORNERS":
+            for i in [0, dimX-1]:
+                for j in [0, dimY-1]:
+                    for k in [0, dimZ-1]:
+                        id = (i * dimY + j) * dimZ + k
+                        nodes[id, 5] = 1.0
     # Mark drivers/listeners
     if drivers is not None:
         nodes[idx(drivers[:,0], drivers[:,1], drivers[:,2]), 6] = 1.0
@@ -94,7 +101,7 @@ def build_edges_nearest(dimX: int, dimY: int, dimZ: int,
                         m = idx(i2,j2,k2)
                         # add directed edge n->m (we will accumulate forces symmetrically)
                         edges.append((n, m))
-                        attrs.append([stiffness, damping, dist, di, dj, dk])
+                        attrs.append([stiffness, damping, dist])
     edge_index = torch.tensor(edges, dtype=torch.long, device=device).t().contiguous()  # [2,E]
     springs = torch.tensor(attrs, dtype=torch.float32, device=device)
     return edge_index, springs
@@ -140,7 +147,7 @@ def build_edges_second_neighbor(dimX, dimY, dimZ, dist, stiffness, damping, devi
                     if 0 <= i2 < dimX and 0 <= j2 < dimY and 0 <= k2 < dimZ:
                         m = idx(i2,j2,k2)
                         edges.append((n, m))
-                        attrs.append([stiffness, damping, dist * (di**2 + dj**2 + dk**2)**0.5, di, dj, dk])
+                        attrs.append([stiffness, damping, dist * (di**2 + dj**2 + dk**2)**0.5])
     edge_index = torch.tensor(edges, dtype=torch.long, device=device).t().contiguous()
     springs = torch.tensor(attrs, dtype=torch.float32, device=device)
     return edge_index, springs
@@ -159,7 +166,7 @@ def build_edges_checkerboard(dimX, dimY, dimZ, dist, stiffness, damping, device)
                         if 0 <= i2 < dimX and 0 <= j2 < dimY and 0 <= k2 < dimZ:
                             m = idx(i2,j2,k2)
                             edges.append((n, m))
-                            attrs.append([stiffness, damping, dist * (di**2 + dj**2 + dk**2)**0.5, di, dj, dk])
+                            attrs.append([stiffness, damping, dist * (di**2 + dj**2 + dk**2)**0.5])
     edge_index = torch.tensor(edges, dtype=torch.long, device=device).t().contiguous()
     springs = torch.tensor(attrs, dtype=torch.float32, device=device)
     return edge_index, springs
@@ -177,7 +184,7 @@ def build_edges_dilated2(dimX, dimY, dimZ, dist, stiffness, damping, device):
                     if 0 <= i2 < dimX and 0 <= j2 < dimY and 0 <= k2 < dimZ:
                         m = idx(i2,j2,k2)
                         edges.append((n, m))
-                        attrs.append([stiffness, damping, dist * abs(di+dj+dk), di, dj, dk])
+                        attrs.append([stiffness, damping, dist * abs(di+dj+dk)])
     edge_index = torch.tensor(edges, dtype=torch.long, device=device).t().contiguous()
     springs = torch.tensor(attrs, dtype=torch.float32, device=device)
     return edge_index, springs
@@ -205,7 +212,7 @@ def build_edges_clique_2x2(dimX, dimY, dimZ, dist, stiffness, damping, device):
                         dj = block[b][1] - block[a][1]
                         dk = block[b][2] - block[a][2]
                         edges.append((n1, n2))
-                        attrs.append([stiffness, damping, dist * (di**2 + dj**2 + dk**2)**0.5, di, dj, dk])
+                        attrs.append([stiffness, damping, dist * (di**2 + dj**2 + dk**2)**0.5])
     edge_index = torch.tensor(edges, dtype=torch.long, device=device).t().contiguous()
     springs = torch.tensor(attrs, dtype=torch.float32, device=device)
     return edge_index, springs
@@ -224,7 +231,7 @@ def build_edges_wireframe(dimX, dimY, dimZ, dist, stiffness=1e-3, damping=0.0, d
                 n1 = idx(i, j, k)
                 n2 = idx(i+1, j, k)
                 edges.append((n1, n2))
-                attrs.append([stiffness, damping, dist, 1, 0, 0])
+                attrs.append([stiffness, damping, dist])
     # Y edges (along y, at x/z boundaries)
     for i in [0, dimX-1]:
         for k in [0, dimZ-1]:
@@ -232,7 +239,7 @@ def build_edges_wireframe(dimX, dimY, dimZ, dist, stiffness=1e-3, damping=0.0, d
                 n1 = idx(i, j, k)
                 n2 = idx(i, j+1, k)
                 edges.append((n1, n2))
-                attrs.append([stiffness, damping, dist, 0, 1, 0])
+                attrs.append([stiffness, damping, dist])
     # Z edges (along z, at x/y boundaries)
     for i in [0, dimX-1]:
         for j in [0, dimY-1]:
@@ -240,7 +247,7 @@ def build_edges_wireframe(dimX, dimY, dimZ, dist, stiffness=1e-3, damping=0.0, d
                 n1 = idx(i, j, k)
                 n2 = idx(i, j, k+1)
                 edges.append((n1, n2))
-                attrs.append([stiffness, damping, dist, 0, 0, 1])
+                attrs.append([stiffness, damping, dist])
     edge_index = torch.tensor(edges, dtype=torch.long, device=device).t().contiguous()
     springs = torch.tensor(attrs, dtype=torch.float32, device=device)
     return edge_index, springs
