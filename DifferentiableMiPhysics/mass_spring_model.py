@@ -37,13 +37,13 @@ class MassSpringModel(nn.Module):
         self.E = self.edge_index.shape[1]
         self.dim = 3
         self.dt = float(dt)
+        #self.use_dt_scaling
 
         # ----- per-mass parameters -----
         # mass, radius, fixed flags come from nodes
         mass_from_nodes = nodes[:, 3].clamp_min(1e-12)
         inv_mass_init = 1.0 / mass_from_nodes
         self.inv_mass  = nn.Parameter(inv_mass_init.clone())      # learnable if you want
-        self.mass_damp = nn.Parameter(torch.full((self.N,), 0.02, device=nodes.device, dtype=nodes.dtype))
         self.radius    = nn.Parameter(nodes[:, 4].clone(), requires_grad=False)
 
         # fixed-mask (1.0 -> fixed); keep as buffer
@@ -58,6 +58,15 @@ class MassSpringModel(nn.Module):
         # ----- state -----
         # Rest configuration (world positions) from nodes[:, :3]
         self.register_buffer("rest_pos", nodes[:, 0:3].clone())
+        with torch.no_grad():
+            i, j = self.edge_index[0], self.edge_index[1]
+            d0 = self.rest_pos[j] - self.rest_pos[i]
+            L0 = (d0.pow(2).sum(-1) + 1e-12).sqrt()
+            if isinstance(self.rest, torch.nn.Parameter):
+                self.rest.data.copy_(L0)
+            else:
+                self.rest = nn.Parameter(L0)
+            self.m_prevDist = L0.clone()
         # miPhysics-style state buffers
         self.register_buffer("m_pos", self.rest_pos.clone())   # current position
         self.register_buffer("m_posR", self.rest_pos.clone())  # delayed position (previous)
@@ -73,7 +82,8 @@ class MassSpringModel(nn.Module):
         # Global
         self.fric = nn.Parameter(torch.tensor(0.25))
         self.register_buffer("gravity", torch.zeros(3, device=self.nodes.device, dtype=self.nodes.dtype))
-        self.use_dt_scaling = False
+        #self.use_dt_scaling = False
+        
 
 
 
@@ -104,21 +114,36 @@ class MassSpringModel(nn.Module):
             self.ctrl_vel.index_fill_(0, node_indices, 0.0)
 
     # ---------------- interactions (springs) ----------------
-    def spring_damper_forces(self, pos, pos_prev):
-        i, j   = self.edge_index[0], self.edge_index[1]
-        d      = pos[j]      - pos[i]
-        d_prev = pos_prev[j] - pos_prev[i]
-        L      = (d.square().sum(-1)      + 1e-12).sqrt()
-        L_prev = (d_prev.square().sum(-1) + 1e-12).sqrt()
-        dir    = d / L.unsqueeze(-1)
+    def spring_damper_forces(self):
+        """
+        miPhysics exact link force:
+        lnkFrc = -K*(L - rest) - Z*(L - m_prevDist)
+        dir is the *current* unit direction.
+        Updates self.m_prevDist <- L (like m_prevDist = m_dist).
+        """
+        i, j = self.edge_index[0], self.edge_index[1]          # [E]
+        d    = self.m_pos[j] - self.m_pos[i]                   # [E,3]
+        m_dist    = (d.pow(2).sum(-1) + 1e-12).sqrt()               # [E]
+        invL = torch.where(m_dist > 1e-9, 1.0 / m_dist, torch.zeros_like(m_dist))
 
-        f_el   = - self.k      * (L - self.rest)     # <-- fix sign
-        f_damp = - self.edge_z * (L - L_prev)
-        f_vec  = (f_el + f_damp).unsqueeze(-1) * dir
+        dir  = d * invL.unsqueeze(-1)                          # [E,3]
 
-        F = torch.zeros_like(pos)
+        # scalar link force (Hooke + dashpot on distance change)
+        f_el   = - self.k      * (m_dist - self.rest)               # [E]
+        f_damp = - self.edge_z * (m_dist - self.m_prevDist)             # [E]
+        lnkFrc = f_el + f_damp                                 # [E]
+
+        f_vec = lnkFrc.unsqueeze(-1) * dir                     # [E,3]
+
+        # scatter to nodes
+        F = torch.zeros_like(self.m_pos)                       # [N,3]
         F.index_add_(0, i,  f_vec)
         F.index_add_(0, j, -f_vec)
+
+        # update previous distance for next tick (like m_prevDist = m_dist)
+        # detach: we don't want to backprop through the rolling state
+        self.m_prevDist = m_dist.detach()
+
         return F
 
     def compute(self):
@@ -132,46 +157,55 @@ class MassSpringModel(nn.Module):
         # === 1) INTEGRATE using previous step's forces (in m_frc) ===
         invM = self.inv_mass.view(-1, 1)          # [N,1]
         fr   = getattr(self, 'fric', None)
+        g = self.gravity
+        c = (invM * fr).clamp(0.0, 1.9)
+
         if fr is None:
             # default medium-friction ~ 0
             fr = torch.zeros_like(self.inv_mass)
         fr = fr.view(-1, 1)                       # [N,1]
-        # choose units: miPhysics per-sample, or dt-scaled physics
-        c   = invM * fr                        # [N,1]
-        a   = invM * self.m_frc                # [N,3]
-        g   = self.gravity.view(1,3)           # [1,3]
+        F = self.m_frc
 
-        x_prev = self.m_posR
-        x_curr = self.m_pos.clone()
+        # if self.use_dt_scaling:
+        #     dt   = self.dt
+        #     dt2  = dt * dt
+        #     c    = invM * fr * dt                               # [N,1]  ~ fr/m per step*time
+        #     a    = invM * self.m_frc * dt2                      # [N,3]
+        #     gterm= self.gravity.view(1,3) * dt2                 # [1,3]
+        # else:
+        #     c    = invM * fr                                    # [N,1]
+        #     a    = invM * self.m_frc                            # [N,3]
+        #     gterm= self.gravity.view(1,3)   
 
-        # x_new = (2 - c) * x - (1 - c) * x_prev + a - g
-        x_new  = x_curr * (2.0 - c) - x_prev * (1.0 - c) + a - g
+        x_prev = self.m_pos.clone()
+        rest  = self.rest_pos
 
-        # enforce fixed nodes (keep where they are)
-        fixed  = self.fixed_mask                  # [N,1] with 1.0 for fixed
-        x_new  = (1.0 - fixed) * x_new + fixed * x_curr
 
-        # rotate buffers
-        self.m_posR = x_curr
-        self.m_pos  = x_new
+        acc_term = F * invM
+        self.m_pos  = self.m_pos  * (2.0 - c)
+        self.m_posR = self.m_posR * (1.0 - c)
+        self.m_pos  = self.m_pos - self.m_posR + acc_term - g
+        self.m_posR = x_prev
+        # Get pos of first driver
+
+        # --- enforce fixed nodes AFTER update ---
+        fixed = self.fixed_mask  # [N,1], 1.0 for fixed
+        # Keep fixed nodes exactly where they were (x_prev), and keep their delayed pos equal too
+        self.m_pos  = (1.0 - fixed) * self.m_pos  + fixed * rest
+        self.m_posR = (1.0 - fixed) * self.m_posR + fixed * rest
 
         # === 2) BUILD FORCES for the next step (springs + drivers) ===
         # start fresh next-step force buffer
         self.m_frc.zero_()
 
         # interactions (springs) add to m_frc for next step
-        Fspr = self.spring_damper_forces(self.m_pos, self.m_posR)  # [N,3]
+        Fspr = self.spring_damper_forces()  # [N,3]
         self.m_frc += Fspr
-
-        # optional per-mass viscous damping (velocity proxy) for next step
-        vel_proxy = self.m_pos - self.m_posR
-        if hasattr(self, 'mass_damp'):
-            self.m_frc += (- self.mass_damp.view(-1,1)) * vel_proxy
 
         # zero forces on fixed nodes (so next step ignores them)
         self.m_frc *= (1.0 - fixed)
 
-        return self.m_pos
+        return self.m_pos        
 
     def computeNsteps(self, N: int, substeps: int = 1):
         """
@@ -408,7 +442,7 @@ class MassSpringModel(nn.Module):
         return audio  # [T_audio, K]
 
 if __name__ == "__main__":
-    fs = 16000
+    fs = 1000
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
     # Grid 3x3x3, nearest-neighbor springs
@@ -417,7 +451,7 @@ if __name__ == "__main__":
     model.dt = 1 / fs
 
     traj = []
-    T = int(4*fs)  # 1 second at 44.1kHz
+    T = int(1000)  # 1 second at 44.1kHz
     x = None
     v = None
     example_driver_id = model.get_driver_ids()[0].item()
@@ -426,8 +460,8 @@ if __name__ == "__main__":
         if t == 0:
             model.apply_force_on_drivers((3,3,3))
         x = model.compute()
-        if t == 0 or t == 8000 or t == 4000 or t == 32000:
-            print(f"Step {t}: driver pos {x[example_driver_id].detach().cpu().numpy()}")
+        #if t == 0 or t == 8000 or t == 4000:
+        print(f"Step {t}: driver pos {x[example_driver_id].detach().cpu().numpy()}")
         traj.append(x)
     traj = torch.stack(traj)  # [T,N,dim]
 
