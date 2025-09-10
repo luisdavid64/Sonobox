@@ -37,13 +37,12 @@ class MassSpringModel(nn.Module):
         self.E = self.edge_index.shape[1]
         self.dim = 3
         self.dt = float(dt)
-        #self.use_dt_scaling
 
         # ----- per-mass parameters -----
         # mass, radius, fixed flags come from nodes
         mass_from_nodes = nodes[:, 3].clamp_min(1e-12)
         self.mass = nn.Parameter(mass_from_nodes.clone())
-        inv_mass_init = (self.dt ** 2) / mass_from_nodes  # per MIPhysics
+        inv_mass_init = 1 / mass_from_nodes  # per MIPhysics
         self.inv_mass = nn.Parameter(inv_mass_init.clone())
         self.radius    = nn.Parameter(nodes[:, 4].clone(), requires_grad=False)
 
@@ -85,12 +84,6 @@ class MassSpringModel(nn.Module):
         self.register_buffer("gravity", torch.zeros(3, device=self.nodes.device, dtype=self.nodes.dtype))
         #self.use_dt_scaling = False
 
-
-    def set_dt(self, dt: float):
-        self.dt = float(dt)
-        self.inv_mass.data = (self.dt * self.dt) / self.mass.data
-        self.k[:]      = self.k[:] / (dt * dt)   # now big enough to move
-        self.edge_z[:] = self.edge_z[:] / dt
 
     # ---------------- miPhysics-like API ----------------
     def resetForce(self):
@@ -142,8 +135,8 @@ class MassSpringModel(nn.Module):
 
         # scatter to nodes
         F = torch.zeros_like(self.m_pos)                       # [N,3]
-        F.index_add_(0, i,  f_vec)
-        F.index_add_(0, j, -f_vec)
+        F.index_add_(0, i, -f_vec)
+        F.index_add_(0, j, f_vec)
 
         # update previous distance for next tick (like m_prevDist = m_dist)
         # detach: we don't want to backprop through the rolling state
@@ -153,12 +146,12 @@ class MassSpringModel(nn.Module):
 
     def compute(self):
         # --- 1) integrate with previous forces ---
-        invM  = (self.dt * self.dt) / self.mass.view(-1, 1)     # [N,1]
+        invM  = 1 / self.mass.view(-1, 1)     # [N,1]
         fr    = getattr(self, 'fric', None)
         if fr is None:
             fr = torch.zeros_like(self.mass)
         c     = (invM * fr.view(-1,1)).clamp(0.0, 1.9)          # [N,1]
-        gterm = self.gravity.view(1,3) * (self.dt * self.dt)    # [1,3]
+        gterm = self.gravity.view(1,3)     # [1,3]
         F     = self.m_frc                                       # [N,3]
 
         x, xr = self.m_pos, self.m_posR
@@ -171,16 +164,20 @@ class MassSpringModel(nn.Module):
         self.m_pos  = x
 
         # enforce fixed nodes → keep at rest
-        fixed = self.fixed_mask; rest = self.rest_pos
+        fixed = self.fixed_mask; 
+        rest = self.rest_pos
         self.m_pos  = (1.0 - fixed) * self.m_pos  + fixed * rest
         self.m_posR = (1.0 - fixed) * self.m_posR + fixed * rest
 
         # --- 2) rebuild forces for next step (springs + drivers) ---
         self.m_frc.zero_()
         Fspr = self.spring_damper_forces()
-        self.m_frc += Fspr
-        self.m_frc *= (1.0 - fixed)
-
+        # store Fspr as a csv
+        # import pandas as pd
+        # pd.DataFrame(Fspr.detach().cpu().numpy()).to_csv("Fspr_forces.csv", index=False)
+        # exit()
+        
+        self.m_frc += Fspr * (1.0 - fixed)  # no forces on fixed nodes
         return self.m_pos      
 
     def computeNsteps(self, N: int, substeps: int = 1):
@@ -302,7 +299,7 @@ class MassSpringModel(nn.Module):
                 prev_vel = vel
             elif observable == "force":
                 # recompute spring forces at *current* state
-                Fspr = self.spring_forces(self.m_pos, self.m_posR)   # [N,3]
+                Fspr = self.spring_damper_forces()   # [N,3]
                 val = Fspr[ids]
                 out[t] = _axis_pick_t(val, axis)
             else:
@@ -426,36 +423,24 @@ if __name__ == "__main__":
 
 
     traj = []
-    T = int(1*fs)  # 1 second at 16kHz
+    T = int(16000)  # 1 second at 16kHz
     x = None
     v = None
     example_driver_id = model.get_driver_ids()[0].item()
     print("Example driver id:", example_driver_id)
     for t in range(T):
-        if t == 0:
-            model.apply_force_on_drivers((3*fs,3*fs,3*fs))
+        if t == 0 or t == 8000:
+            model.apply_force_on_drivers((10,10,10))
         x = model.compute()
         #if t == 0 or t == 8000 or t == 4000:
         print(f"Step {t}: driver pos {x[example_driver_id].detach().cpu().numpy()}")
         traj.append(x)
     traj = torch.stack(traj)  # [T,N,dim]
 
-    # 3) Strong, undeniable excitation
-    # Option A: immediate force for 10 steps (works with lagged-forces too)
-    # for _ in range(10):                      # ~10 ms if dt=1e-3
-    #     model.apply_force_on_drivers((1.0, 0.0, 0.0))  # BIG force
-    #     model.compute()
+    plot_model_graph_3d(model)
+    render_traj_taichi3d(traj.detach().cpu().numpy(), model.edge_index.cpu().numpy())
 
-    # Option B: instant velocity kick (bypasses force buffering)
-    # model.kick_nodes(ids, (10.0, 0.0, 0.0))
-    # for _ in range(10): model.compute()
-
-    # 4) Check movement
-    # disp = (model.m_pos - x0)
-    # print("max |disp|:", disp.abs().max().item())
-    # print("sample driver pos:", model.m_pos[model.get_driver_ids()[0]])
-    # exit()
-
+    exit()
 
     audio = model.render_audio_offline(
         seconds=T * model.dt,   # align with what you simulated
