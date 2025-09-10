@@ -21,6 +21,8 @@ if __name__ == "__main__":
     }
     init_k = model.k
     init_edgeZ = model.z
+    init_fric = model.fric
+    init_invM = model.inv_mass
 
     # Simulate and get audio
     seconds = 0.5  # seconds
@@ -29,7 +31,8 @@ if __name__ == "__main__":
     for i in range(iters):
         model.detach_state()
         audio = model.render_audio(seconds=seconds, fs=fs, axis='all', listener_ids=model.get_listener_ids(), layout='mono', events=events)  # [T_audio, 1]
-        print(audio.min(), audio.max())
+        # Contains nan, optimized values become unstable (i guess invM)
+        # print(audio.isnan().any())
         loss = (audio**2).mean()
         print(f"Iter {i+1}/{iters}, audio power: {loss.item():.6f}")
         optimizer.zero_grad()
@@ -38,3 +41,6 @@ if __name__ == "__main__":
         # Print current params vs original at init
         print("  |K|   :", torch.mean(torch.abs(model.k)).item(), " (init ", torch.mean(torch.abs(init_k)).item(), ")")
         print("  |edgeZ|:", torch.mean(torch.abs(model.z)).item(), " (init ", torch.mean(torch.abs(init_edgeZ)).item(), ")")
+        # Print inv mass and friction
+        print("  |invM| :", torch.mean(torch.abs(model.inv_mass)).item(), " (init ", torch.mean(torch.abs(init_invM)).item(), ")")
+        print(" |fric| :", torch.mean(torch.abs(model.fric)).item(), " (init ", torch.mean(torch.abs(init_fric)).item(), ")")
