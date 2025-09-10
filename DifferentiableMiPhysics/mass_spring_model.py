@@ -429,8 +429,8 @@ if __name__ == "__main__":
     example_driver_id = model.get_driver_ids()[0].item()
     print("Example driver id:", example_driver_id)
     for t in range(T):
-        if t == 0 or t == 8000:
-            model.apply_force_on_drivers((10,10,10))
+        if t == 0 or t == 4000 or t == 8000:
+            model.apply_force_on_drivers((30,30,30))
         x = model.compute()
         #if t == 0 or t == 8000 or t == 4000:
         print(f"Step {t}: driver pos {x[example_driver_id].detach().cpu().numpy()}")
@@ -439,8 +439,6 @@ if __name__ == "__main__":
 
     plot_model_graph_3d(model)
     render_traj_taichi3d(traj.detach().cpu().numpy(), model.edge_index.cpu().numpy())
-
-    exit()
 
     audio = model.render_audio_offline(
         seconds=T * model.dt,   # align with what you simulated

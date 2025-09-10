@@ -1,7 +1,8 @@
 import plotly.graph_objects as go
 import numpy as np
-import matplotlib.animation as animation
-import matplotlib.pyplot as plt
+import taichi as ti
+import numpy as np
+import imageio
 
 
 def plot_model_graph_3d(
@@ -103,52 +104,16 @@ def plot_model_graph_3d(
     )
     fig.write_html("graph3d.html")
 
-# pip install taichi imageio
-import taichi as ti
-import numpy as np
-import imageio
 
 ti.init(arch=ti.cpu, log_level=ti.ERROR)
 
-
-def _fix_taichi_frame(window, img, target_size=None):
-    """
-    img: float32 [0..1] or uint8 from window.get_image_buffer_as_numpy() (H, W, 3/4)
-    target_size: (W0, H0) if you want to force a fixed output size
-    Returns: uint8 RGB (H0, W0, 3), top-left origin, correct orientation
-    """
-    # strip alpha if present
-    if img.shape[-1] == 4:
-        img = img[:, :, :3]
-
-    # Taichi’s origin is bottom-left; flip to top-left for video files
-    img = np.flipud(img)
-
-    # Some backends deliver swapped axes on macOS; compare to window size
-    W_win, H_win = window.get_window_shape()   # (W, H)
-    H_buf, W_buf = img.shape[:2]
-    if (H_buf, W_buf) == (W_win, H_win)[::-1]:
-        # swap axes if they’re transposed
-        img = np.transpose(img, (1, 0, 2))
-
-    # force fixed size if requested
-    if target_size is not None:
-        W0, H0 = target_size
-        if (img.shape[1], img.shape[0]) != (W0, H0):
-            from PIL import Image
-            img = np.array(Image.fromarray((img*255).astype(np.uint8) if img.dtype!=np.uint8 else img)
-                           .resize((W0, H0), resample=Image.BILINEAR))
-            # ensure uint8 RGB
-            if img.dtype != np.uint8:
-                img = img.astype(np.uint8)
-            if img.ndim == 2:
-                img = np.stack([img]*3, axis=-1)
-            return img
-
-    # to uint8 RGB
-    if img.dtype != np.uint8:
-        img = (img * 255).astype(np.uint8)
-    return img
+def compute_center_and_radius(particles):
+    p = particles # (N, 3)
+    center = p.mean(axis=0)                # entroid
+    
+    # bounding radius: max distance to centroid
+    radius = np.linalg.norm(p - center, axis=1).max()
+    return center, float(radius)
 
 def render_traj_taichi3d(traj, edge_index, masses=None, radii=None, k=None,
                          out_path="traj3d.mp4", fps=30, sim_rate=16000):
@@ -167,13 +132,28 @@ def render_traj_taichi3d(traj, edge_index, masses=None, radii=None, k=None,
     extent = (maxs - mins).max()
     dist = 0.8*extent  # padding factor
 
-    window = ti.ui.Window("Mass–Spring 3D", (800, 600))
+    center,radius = compute_center_and_radius(traj[0])
+
+    window = ti.ui.Window("Mass–Spring 3D", (1200, 800))
     scene = window.get_scene()
     camera = ti.ui.Camera()
+
+    # Camera framing: keep the whole object in view based on fov
+    fov = 45.0  # degrees
+    import math
+    dist = radius / math.tan(math.radians(fov) * 0.5) * 1.1  # 20% padding
+
+    # WORLD AXES we want on screen:
+    #   x -> right, y -> up, z -> back (into the screen)
+    # Put the camera on the -z side, looking toward +z (the "back")
+    cam_pos = (center[0], center[1], center[2] - dist)
+
+    camera.position(*cam_pos)
+    camera.lookat(*center)
+    camera.up(0, 1, 0)     # y is up
+    camera.fov(fov)
     canvas = window.get_canvas()
-    camera.position(center[0] + dist, center[1] + dist, center[2] + dist)
-    camera.lookat(center[0], center[1], center[2])
-    camera.up(0, 1, 0)
+
 
     particles = ti.Vector.field(3, dtype=ti.f32, shape=N)
     writer = imageio.get_writer(out_path, fps=fps)
@@ -199,9 +179,8 @@ def render_traj_taichi3d(traj, edge_index, masses=None, radii=None, k=None,
         canvas.scene(scene)
 
         raw = window.get_image_buffer_as_numpy()
-        frame = _fix_taichi_frame(window, raw, target_size=(800, 600))
 
-        writer.append_data(frame)
+        writer.append_data(raw.transpose(1,0,2))
         window.show()
 
     writer.close()
