@@ -143,7 +143,7 @@ class MassSpringModel(nn.Module):
         F = torch.index_add(F, 0, j,  f_vec)
 
         # update previous distance for next tick WITH graph (no detach)
-        self.m_prevDist = m_dist
+        self.m_prevDist = m_dist.clone()
         return F
 
     def compute(self):
@@ -399,6 +399,21 @@ class MassSpringModel(nn.Module):
 
         return audio  # [T_audio, K]
 
+    @torch.no_grad()
+    def detach_state(self, reset_to_rest=True):
+        if reset_to_rest:
+            # recompute L0 and ASSIGN
+            i, j = self.edge_index[0], self.edge_index[1]
+            d0 = self.rest_pos[j] - self.rest_pos[i]
+            L0 = (d0.pow(2).sum(-1) + 1e-12).sqrt()
+            self.m_prevDist = L0  # <- not .copy_()
+        else:
+            self.m_prevDist = self.m_prevDist.detach()
+        # also reassign these (no in-place)
+        self.m_pos  = self.rest_pos.clone() if reset_to_rest else self.m_pos.detach()
+        self.m_posR = self.rest_pos.clone() if reset_to_rest else self.m_posR.detach()
+        self.m_frc  = torch.zeros_like(self.m_frc)
+
 
 if __name__ == "__main__":
     fs = 16000
@@ -431,13 +446,11 @@ if __name__ == "__main__":
     # import soundfile as sf, sounddevice as sd
     # sf.write("mass_spring.wav", audio.detach().cpu().numpy(), 16000)
     # sd.play(audio.detach().cpu().numpy(), 16000); sd.wait()
-    # Can we play the audio with another library
-    # Save spectogram of audio
-    plot_spectrogram(audio=audio, fs=fs)
-    import torchaudio
-    torchaudio.save("mass_spring_torch.wav", audio.detach().cpu().T, fs)
-    torchaudio.io.play_audio(audio, fs)
-    exit()
+    # # Can we play the audio with another library
+    # # Save spectogram of audio
+    # print("plotting spectrogram")
+    # plot_spectrogram(audio=audio, fs=fs)
+    # exit()
 
     loss = torch.mean(audio**2)
     print("Audio loss:", loss.item())

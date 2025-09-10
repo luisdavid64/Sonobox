@@ -3,7 +3,9 @@ import numpy as np
 import taichi as ti
 import numpy as np
 import imageio
-
+import librosa
+import matplotlib.pyplot as plt
+import torch
 
 def plot_model_graph_3d(
     model,
@@ -185,3 +187,15 @@ def render_traj_taichi3d(traj, edge_index, masses=None, radii=None, k=None,
 
     writer.close()
     print(f"Saved {out_path}")
+
+
+def plot_spectrogram(audio, fs):
+    if isinstance(audio, torch.Tensor):
+        audio = audio.detach().cpu().numpy()
+    D = librosa.amplitude_to_db(np.abs(librosa.stft(audio.squeeze(), n_fft=1024, hop_length=256, win_length=1024)), ref=np.max) 
+    plt.figure(figsize=(10, 6))
+    librosa.display.specshow(D, sr=fs, hop_length=256, x_axis='time', y_axis='log')
+    plt.colorbar(format='%+2.0f dB')
+    plt.title('Spectrogram')
+    plt.savefig('mass_spring_spectrogram.png')
+    plt.close()
