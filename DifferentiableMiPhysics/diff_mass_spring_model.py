@@ -237,7 +237,9 @@ class MassSpringModel(nn.Module):
                            steps: int,
                            listener_ids: torch.Tensor,
                            observable: str = "pos",   # 'pos' | 'vel' | 'acc' | 'force'
-                           axis: str = "all") -> torch.Tensor:
+                           axis: str = "all",
+                           events: dict = {}
+                           ) -> torch.Tensor:
         """
         Run `steps` physics ticks and return raw multichannel listener signal at sim rate.
         Output shape: [steps, C] (C = #listeners). Uses current self.dt.
@@ -248,8 +250,8 @@ class MassSpringModel(nn.Module):
         out = torch.zeros(steps, C, device=device, dtype=self.m_pos.dtype)
 
         for t in range(steps):
-            if t == 8000:
-                self.apply_force_on_drivers((3,3,3))
+            if t in events:
+                self.apply_force_on_drivers(events[t])
             self.compute()
 
             # absolute pos
@@ -339,7 +341,9 @@ class MassSpringModel(nn.Module):
                      layout: str = "stereo",
                      pan_method: str = "by_position",
                      hp: bool = True,
-                     gain: float | None = None) -> torch.Tensor:
+                     gain: float | None = None,
+                     events: dict = {}
+                     ) -> torch.Tensor:
         """
         End-to-end: simulate at current dt for `seconds`, capture listeners,
         resample to `fs`, downmix, return audio [T_audio, K].
@@ -357,7 +361,7 @@ class MassSpringModel(nn.Module):
 
         # how many sim steps?
         steps = int(round(seconds / float(self.dt)))
-        raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis)  # [T_sim,C]
+        raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis, events=events)  # [T_sim,C]
 
         # (optional) DC-block at sim rate before resampling (helps big drifts for positions)
         if hp:
@@ -408,6 +412,12 @@ if __name__ == "__main__":
 
     # Render 1s of audio and backprop a simple power loss
     seconds = 1.0
+
+    events = {
+        8000: (3, 3, 3),
+        12000: (0, 0, 5),
+        # more events...
+    }
     audio = model.render_audio(
         seconds=seconds,
         fs=fs,
@@ -417,16 +427,17 @@ if __name__ == "__main__":
         layout='mono',
         pan_method='by_position',
         hp=True,
+        events=events
     )  # [T_audio, 1]
     
-    # import soundfile as sf, sounddevice as sd
-    # sf.write("mass_spring.wav", audio.detach().cpu().numpy(), 16000)
-    # sd.play(audio.detach().cpu().numpy(), 16000); sd.wait()
+    import soundfile as sf, sounddevice as sd
+    sf.write("mass_spring.wav", audio.detach().cpu().numpy(), 16000)
+    sd.play(audio.detach().cpu().numpy(), 16000); sd.wait()
     # # Can we play the audio with another library
     # # Save spectogram of audio
     # print("plotting spectrogram")
     # plot_spectrogram(audio=audio, fs=fs)
-    # exit()
+    exit()
 
     loss = torch.mean(audio**2)
     print("Audio loss:", loss.item())
