@@ -377,7 +377,7 @@ class MassSpringModel(nn.Module):
         # final gain & clamp
         audio = torch.clamp(audio * gain, -1, 1)
         fade_len = int(0.600 * fs)  # 600 ms fade-in
-        fade = torch.linspace(0, 1, fade_len).unsqueeze(-1)
+        fade = torch.linspace(0, 1, fade_len).unsqueeze(-1).to(device)
         audio[:fade_len, :] *= fade
 
         return audio  # [T_audio, K]
