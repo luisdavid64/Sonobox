@@ -42,8 +42,9 @@ class MassSpringModel(nn.Module):
         # ----- per-mass parameters -----
         # mass, radius, fixed flags come from nodes
         mass_from_nodes = nodes[:, 3].clamp_min(1e-12)
-        inv_mass_init = 1.0 / mass_from_nodes
-        self.inv_mass  = nn.Parameter(inv_mass_init.clone())      # learnable if you want
+        self.mass = nn.Parameter(mass_from_nodes.clone())
+        inv_mass_init = (self.dt ** 2) / mass_from_nodes  # per MIPhysics
+        self.inv_mass = nn.Parameter(inv_mass_init.clone())
         self.radius    = nn.Parameter(nodes[:, 4].clone(), requires_grad=False)
 
         # fixed-mask (1.0 -> fixed); keep as buffer
@@ -83,9 +84,13 @@ class MassSpringModel(nn.Module):
         self.fric = nn.Parameter(torch.tensor(0.25))
         self.register_buffer("gravity", torch.zeros(3, device=self.nodes.device, dtype=self.nodes.dtype))
         #self.use_dt_scaling = False
-        
 
 
+    def set_dt(self, dt: float):
+        self.dt = float(dt)
+        self.inv_mass.data = (self.dt * self.dt) / self.mass.data
+        self.k[:]      = self.k[:] / (dt * dt)   # now big enough to move
+        self.edge_z[:] = self.edge_z[:] / dt
 
     # ---------------- miPhysics-like API ----------------
     def resetForce(self):
@@ -147,65 +152,36 @@ class MassSpringModel(nn.Module):
         return F
 
     def compute(self):
-        """
-        miPhysics-style step with lagged forces:
-        - use *current* m_frc (accumulated last step) to integrate
-        - then zero m_frc and accumulate new forces (springs + drivers) for the next step
-        - listener hook runs after states are updated
-        Position-form Verlet with medium friction like miPhysics.
-        """
-        # === 1) INTEGRATE using previous step's forces (in m_frc) ===
-        invM = self.inv_mass.view(-1, 1)          # [N,1]
-        fr   = getattr(self, 'fric', None)
-        g = self.gravity
-        c = (invM * fr).clamp(0.0, 1.9)
-
+        # --- 1) integrate with previous forces ---
+        invM  = (self.dt * self.dt) / self.mass.view(-1, 1)     # [N,1]
+        fr    = getattr(self, 'fric', None)
         if fr is None:
-            # default medium-friction ~ 0
-            fr = torch.zeros_like(self.inv_mass)
-        fr = fr.view(-1, 1)                       # [N,1]
-        F = self.m_frc
+            fr = torch.zeros_like(self.mass)
+        c     = (invM * fr.view(-1,1)).clamp(0.0, 1.9)          # [N,1]
+        gterm = self.gravity.view(1,3) * (self.dt * self.dt)    # [1,3]
+        F     = self.m_frc                                       # [N,3]
 
-        # if self.use_dt_scaling:
-        #     dt   = self.dt
-        #     dt2  = dt * dt
-        #     c    = invM * fr * dt                               # [N,1]  ~ fr/m per step*time
-        #     a    = invM * self.m_frc * dt2                      # [N,3]
-        #     gterm= self.gravity.view(1,3) * dt2                 # [1,3]
-        # else:
-        #     c    = invM * fr                                    # [N,1]
-        #     a    = invM * self.m_frc                            # [N,3]
-        #     gterm= self.gravity.view(1,3)   
-
-        x_prev = self.m_pos.clone()
-        rest  = self.rest_pos
-
+        x, xr = self.m_pos, self.m_posR
+        x_prev = x.clone()
 
         acc_term = F * invM
-        self.m_pos  = self.m_pos  * (2.0 - c)
-        self.m_posR = self.m_posR * (1.0 - c)
-        self.m_pos  = self.m_pos - self.m_posR + acc_term - g
-        self.m_posR = x_prev
-        # Get pos of first driver
+        x        = x * (2.0 - c) - xr * (1.0 - c) + acc_term - gterm
 
-        # --- enforce fixed nodes AFTER update ---
-        fixed = self.fixed_mask  # [N,1], 1.0 for fixed
-        # Keep fixed nodes exactly where they were (x_prev), and keep their delayed pos equal too
+        self.m_posR = x_prev
+        self.m_pos  = x
+
+        # enforce fixed nodes → keep at rest
+        fixed = self.fixed_mask; rest = self.rest_pos
         self.m_pos  = (1.0 - fixed) * self.m_pos  + fixed * rest
         self.m_posR = (1.0 - fixed) * self.m_posR + fixed * rest
 
-        # === 2) BUILD FORCES for the next step (springs + drivers) ===
-        # start fresh next-step force buffer
+        # --- 2) rebuild forces for next step (springs + drivers) ---
         self.m_frc.zero_()
-
-        # interactions (springs) add to m_frc for next step
-        Fspr = self.spring_damper_forces()  # [N,3]
+        Fspr = self.spring_damper_forces()
         self.m_frc += Fspr
-
-        # zero forces on fixed nodes (so next step ignores them)
         self.m_frc *= (1.0 - fixed)
 
-        return self.m_pos        
+        return self.m_pos      
 
     def computeNsteps(self, N: int, substeps: int = 1):
         """
@@ -225,7 +201,7 @@ class MassSpringModel(nn.Module):
 
     # ---------------- utilities ----------------
     @classmethod
-    def from_config(cls, config: dict, device: Optional[torch.device] = None):
+    def from_config(cls, config: dict, device: Optional[torch.device] = None, dt: float = 1/16000):
         def parse_mass_name(name):
             p = name.split("_")
             if len(p) != 4 or p[0] != "m":
@@ -255,14 +231,14 @@ class MassSpringModel(nn.Module):
                                                   interaction_type=interactionType, device=device)
         return cls(nodes, edge_index, springs, drivers, listeners, config,
                    dimX=dimX, dimY=dimY, dimZ=dimZ,
-                   interactionType=interactionType, bounds=bounds)
+                   interactionType=interactionType, bounds=bounds, dt=dt)
                 
     @classmethod
-    def from_json(cls, path: str, device: Optional[torch.device] = None):
+    def from_json(cls, path: str, device: Optional[torch.device] = None, dt: float = 1/16000):
         import json
         with open(path, "r") as f:
             config = json.load(f)
-        return cls.from_config(config, device=device)
+        return cls.from_config(config, device=device, dt=dt)
 
     def get_driver_ids(self):
         if self.drivers is None:
@@ -442,23 +418,22 @@ class MassSpringModel(nn.Module):
         return audio  # [T_audio, K]
 
 if __name__ == "__main__":
-    fs = 1000
+    fs = 16000
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
-    # Grid 3x3x3, nearest-neighbor springs
-    model = MassSpringModel.from_json("../model_configs/sonobox_data/baselines/biosonix_3D.json", device=device)
+
+    model = MassSpringModel.from_json("../model_configs/sonobox_data/baselines/biosonix_3D.json", device=device, dt=1/fs)
     model.eval()
-    model.dt = 1 / fs
+
 
     traj = []
-    T = int(1000)  # 1 second at 44.1kHz
+    T = int(1*fs)  # 1 second at 16kHz
     x = None
     v = None
     example_driver_id = model.get_driver_ids()[0].item()
     print("Example driver id:", example_driver_id)
     for t in range(T):
         if t == 0:
-            model.apply_force_on_drivers((3,3,3))
+            model.apply_force_on_drivers((3*fs,3*fs,3*fs))
         x = model.compute()
         #if t == 0 or t == 8000 or t == 4000:
         print(f"Step {t}: driver pos {x[example_driver_id].detach().cpu().numpy()}")
