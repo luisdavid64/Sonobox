@@ -247,11 +247,6 @@ class MassSpringModel(nn.Module):
         C = ids.numel()
         out = torch.zeros(steps, C, device=device, dtype=self.m_pos.dtype)
 
-        # caches
-        prev_abs = self.m_pos
-        prev_vel = torch.zeros_like(self.m_pos)
-
-
         for t in range(steps):
             if t == 8000:
                 self.apply_force_on_drivers((3,3,3))
@@ -425,6 +420,7 @@ if __name__ == "__main__":
         pan_method='by_position',
         hp=True,
     )  # [T_audio, 1]
+    
     # import soundfile as sf, sounddevice as sd
     # sf.write("mass_spring.wav", audio.detach().cpu().numpy(), 16000)
     # sd.play(audio.detach().cpu().numpy(), 16000); sd.wait()
