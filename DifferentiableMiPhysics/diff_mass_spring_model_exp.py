@@ -47,7 +47,8 @@ class MassSpringModel(nn.Module):
         mass_from_nodes = nodes[:, 3].clamp_min(1e-12)
         self.register_buffer("mass", mass_from_nodes.clone())
         inv_mass_init = 1.0 / mass_from_nodes  # per miPhysics
-        self.inv_mass = nn.Parameter(inv_mass_init.clone())
+        self.inv_mass = nn.Parameter(inv_mass_init.clone(), requires_grad=False)
+        
         self.radius    = nn.Parameter(nodes[:, 4].clone(), requires_grad=False)
 
         # fixed nodes: 5th col of nodes is fixed flag (0/1)
@@ -55,8 +56,9 @@ class MassSpringModel(nn.Module):
 
         # ----- per-edge parameters (from springs builder) -----
         # springs columns: [stiffness, edge_damping, rest_len, di, dj, dk]
-        self.k = nn.Parameter(springs[:, 0].clone())  # [E]
-        self.z = nn.Parameter(springs[:, 1].clone())  # [E]
+        # Parameterize all k and z with a single value each
+        self.k = nn.Parameter(springs[:, 0].clone(), requires_grad=False)  # [E]
+        self.z = nn.Parameter(springs[:, 1].clone(), requires_grad=False)  # [E]
         # We do not optimize rest length directly, but compute from geometry
         self.register_buffer("rest", springs[:, 2].clone())  # [E] (will be overwritten by geometric L0 below)
 
@@ -66,6 +68,7 @@ class MassSpringModel(nn.Module):
 
         # spring previous-distance state (used by dashpot term)
         self.register_buffer("m_prevDist", torch.zeros(self.E, device=nodes.device, dtype=nodes.dtype))
+
 
         # Initialize rest lengths from geometry
         with torch.no_grad():
@@ -85,9 +88,14 @@ class MassSpringModel(nn.Module):
         self._listener_ids = self.get_listener_ids()
 
         # Global
-        self.fric = nn.Parameter(torch.tensor(friction, device=self.nodes.device, dtype=self.nodes.dtype))
+        self.fric = nn.Parameter(torch.tensor(friction, device=self.nodes.device, dtype=self.nodes.dtype), requires_grad=False)
         # We could use gravity if desired
         self.register_buffer("gravity", torch.zeros(3, device=self.nodes.device, dtype=self.nodes.dtype))
+
+        # optim parameters
+        self.theta_k = nn.Parameter(torch.zeros_like(self.k))   # stiffness scale
+        self.theta_z = nn.Parameter(torch.zeros_like(self.z))   # edge damping scale
+        self.theta_fric = nn.Parameter(torch.zeros_like(self.fric))   # edge damping scale
 
     # ---------------- miPhysics-like API ----------------
 
@@ -112,6 +120,9 @@ class MassSpringModel(nn.Module):
         dir is the *current* unit direction.
         Updates self.m_prevDist <- L (kept with full graph for BPTT).
         """
+        k = self.k * torch.exp(self.theta_k)  # ensure positive
+        z = self.z * torch.exp(self.theta_z)  # ensure positive
+
         i, j = self.edge_index[0], self.edge_index[1]          # [E]
         d    = self.m_pos[j] - self.m_pos[i]                   # [E,3]
         m_dist = (d.pow(2).sum(-1) + 1e-12).sqrt()             # [E]
@@ -119,8 +130,8 @@ class MassSpringModel(nn.Module):
         dirv   = d * invL.unsqueeze(-1)                        # [E,3]
 
         # scalar link force (Hooke + dashpot on distance change)
-        f_el   = - self.k      * (m_dist - self.rest)          # [E]
-        f_damp = - self.z * (m_dist - self.m_prevDist)    # [E]
+        f_el   = - k * (m_dist - self.rest)          # [E]
+        f_damp = - z * (m_dist - self.m_prevDist)    # [E]
         lnkFrc = f_el + f_damp                                 # [E]
 
         f_vec = lnkFrc.unsqueeze(-1) * dirv                    # [E,3]
@@ -137,10 +148,9 @@ class MassSpringModel(nn.Module):
     def compute(self):
         # --- 1) integrate with previous forces ---
         invM  = self.inv_mass.view(-1, 1)                      # [N,1]
-        fr    = getattr(self, 'fric', None)
-        if fr is None:
-            fr = torch.zeros_like(self.inv_mass)
-        c     = (invM * fr.view(-1,1)).clamp(0.0, 1.9)         # [N,1]
+
+        fric = self.fric * torch.exp(self.theta_fric)  # ensure positive
+        c     = (invM * fric.view(-1,1)).clamp(0.0, 1.9)         # [N,1]
         gterm = self.gravity.view(1,3)                         # [1,3]
         F     = self.m_frc                                     # [N,3]
 
@@ -430,7 +440,8 @@ class MassSpringModel(nn.Module):
             raw = _dc_block_t(raw)
 
         # resample to audio
-        audio_mc = self.resample_to_audio(raw, fs=fs)  # [T_audio, C]
+        # audio_mc = self.resample_to_audio(raw, fs=fs)  # [T_audio, C]
+        audio_mc = raw
 
         # mix to target layout
         audio = self.mix_down(audio_mc, layout=layout, method=pan_method, listener_ids=listener_ids)
@@ -459,11 +470,11 @@ class MassSpringModel(nn.Module):
         self.m_posR = self.rest_pos.clone() if reset_to_rest else self.m_posR.detach()
         self.m_frc  = torch.zeros_like(self.m_frc)
         # Make sure values are non negative with relu
-        with torch.no_grad():
-            self.inv_mass.data.clamp_min_(1e-8)
-            self.k.data.clamp_min_(1e-8)
-            self.z.data.clamp_min_(0.0)
-            self.fric.data.clamp_min_(0.0)
+        # with torch.no_grad():
+        #     # self.inv_mass.data.clamp_min_(1e-8)
+        #     self.k.data.clamp_min_(1e-8)
+        #     self.z.data.clamp_min_(0.0)
+        # self.fric.data.clamp_min_(0.0)
 
 
 if __name__ == "__main__":
@@ -516,6 +527,6 @@ if __name__ == "__main__":
 
     # Example: inspect gradients exist
     def mean_abs(x): return float(x.detach().abs().mean().cpu())
-    print("grad|K|   :", mean_abs(model.k.grad))
-    print("grad|invM|:", mean_abs(model.inv_mass.grad))
-    print("grad|edgeZ|:", mean_abs(model.z.grad))
+    print("grad|K|   :", model.theta_k.grad)
+    print("grad|Z|:", model.theta_z.grad)
+    print("grad|fric|:", model.theta_fric.grad)
