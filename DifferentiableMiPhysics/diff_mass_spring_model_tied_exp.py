@@ -145,7 +145,6 @@ class MassSpringModel(nn.Module):
         self.m_prevDist = m_dist.clone()
         return F
 
-    @torch.compile
     def compute(self):
         # --- 1) integrate with previous forces ---
         invM  = self.inv_mass.view(-1, 1)                      # [N,1]
@@ -441,7 +440,8 @@ class MassSpringModel(nn.Module):
             raw = _dc_block_t(raw)
 
         # resample to audio
-        audio_mc = self.resample_to_audio(raw, fs=fs)  # [T_audio, C]
+        # audio_mc = self.resample_to_audio(raw, fs=fs)  # [T_audio, C]
+        audio_mc = raw
 
         # mix to target layout
         audio = self.mix_down(audio_mc, layout=layout, method=pan_method, listener_ids=listener_ids)
@@ -529,4 +529,4 @@ if __name__ == "__main__":
     def mean_abs(x): return float(x.detach().abs().mean().cpu())
     print("grad|K|   :", model.theta_k.grad)
     print("grad|Z|:", model.theta_z.grad)
-    print("grad|fric|:", model.fric.grad)
+    print("grad|fric|:", model.theta_fric.grad)
