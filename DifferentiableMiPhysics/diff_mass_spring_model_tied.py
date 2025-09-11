@@ -1,11 +1,11 @@
+import math
 import os
 import torch
 from torch import nn
 from typing import Optional
 from topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
 from viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram
-from audio_helpers import _axis_pick_t, _dc_block_t, _stereo_mixer_t
-torch.autograd.set_detect_anomaly(True)
+from audio_helpers import _axis_pick_t, _dc_block_t, _stereo_mixer_t, _stereo_mixer_tt
 import json
 
 class MassSpringModel(nn.Module):
@@ -47,7 +47,8 @@ class MassSpringModel(nn.Module):
         mass_from_nodes = nodes[:, 3].clamp_min(1e-12)
         self.register_buffer("mass", mass_from_nodes.clone())
         inv_mass_init = 1.0 / mass_from_nodes  # per miPhysics
-        self.inv_mass = nn.Parameter(inv_mass_init.clone())
+        self.inv_mass = nn.Parameter(inv_mass_init.clone(), requires_grad=False)
+        
         self.radius    = nn.Parameter(nodes[:, 4].clone(), requires_grad=False)
 
         # fixed nodes: 5th col of nodes is fixed flag (0/1)
@@ -90,6 +91,13 @@ class MassSpringModel(nn.Module):
         # We could use gravity if desired
         self.register_buffer("gravity", torch.zeros(3, device=self.nodes.device, dtype=self.nodes.dtype))
 
+        # listener HPF state
+        self.m_coef = 0.95
+        self.register_buffer("hp_x_prev", torch.zeros(0))
+        self.register_buffer("hp_y_prev", torch.zeros(0))
+        self.hp_primed = False  # if False, we will prime on first call
+
+
     # ---------------- miPhysics-like API ----------------
 
     def resetForce(self):
@@ -113,6 +121,8 @@ class MassSpringModel(nn.Module):
         dir is the *current* unit direction.
         Updates self.m_prevDist <- L (kept with full graph for BPTT).
         """
+        k = torch.exp(self.k)
+        z = torch.exp(self.z)
         i, j = self.edge_index[0], self.edge_index[1]          # [E]
         d    = self.m_pos[j] - self.m_pos[i]                   # [E,3]
         m_dist = (d.pow(2).sum(-1) + 1e-12).sqrt()             # [E]
@@ -120,8 +130,8 @@ class MassSpringModel(nn.Module):
         dirv   = d * invL.unsqueeze(-1)                        # [E,3]
 
         # scalar link force (Hooke + dashpot on distance change)
-        f_el   = - self.k * (m_dist - self.rest)          # [E]
-        f_damp = - self.z * (m_dist - self.m_prevDist)    # [E]
+        f_el   = - k * (m_dist - self.rest)          # [E]
+        f_damp = - z * (m_dist - self.m_prevDist)    # [E]
         lnkFrc = f_el + f_damp                                 # [E]
 
         f_vec = lnkFrc.unsqueeze(-1) * dirv                    # [E,3]
@@ -138,10 +148,9 @@ class MassSpringModel(nn.Module):
     def compute(self):
         # --- 1) integrate with previous forces ---
         invM  = self.inv_mass.view(-1, 1)                      # [N,1]
-        fr    = getattr(self, 'fric', None)
-        if fr is None:
-            fr = torch.zeros_like(self.inv_mass)
-        c     = (invM * fr.view(-1,1)).clamp(0.0, 1.9)         # [N,1]
+
+        fric = 2.0*torch.sigmoid(self.fric) 
+        c     = (invM * fric.view(-1,1))                       # [N,1]
         gterm = self.gravity.view(1,3)                         # [1,3]
         F     = self.m_frc                                     # [N,3]
 
@@ -296,6 +305,46 @@ class MassSpringModel(nn.Module):
 
     #---------------- audio ----------------
 
+    def _ensure_hp_state(self, C, device, dtype):
+            if self.hp_x_prev.numel() != C:
+                self.hp_x_prev = torch.zeros(C, device=device, dtype=dtype)
+                self.hp_y_prev = torch.zeros(C, device=device, dtype=dtype)
+                self.hp_primed = False
+
+    def highpass_observer3d(self, x: torch.Tensor, R: float | None = None,
+                            prime_on_first_call: bool = True) -> torch.Tensor:
+        """
+        x: [T, C] already axis-picked (pos/force)
+        y[n] = x[n] - x[n-1] + R*y[n-1], with persistent state.
+        If prime_on_first_call: set x[-1]=x[0], y[-1]=0 at first call to avoid a click.
+        """
+        if R is None: R = self.m_coef
+        T, C = x.shape
+        self._ensure_hp_state(C, x.device, x.dtype)
+
+        y = torch.empty_like(x)
+        x_prev = self.hp_x_prev
+        y_prev = self.hp_y_prev
+
+        # Optional priming to avoid the initial pop
+        if prime_on_first_call and not self.hp_primed and T > 0:
+            x_prev = x[0]            # treat "previous input" as first sample
+            y_prev = torch.zeros_like(x_prev)
+            self.hp_primed = True
+
+        R = torch.as_tensor(R, device=x.device, dtype=x.dtype)
+
+        for n in range(T):
+            y_n = x[n] - x_prev + R * y_prev
+            y[n] = y_n
+            x_prev = x[n]
+            y_prev = y_n
+
+        # store state (detached so no graph carry)
+        self.hp_x_prev = x_prev.detach()
+        self.hp_y_prev = y_prev.detach()
+        return y
+
     def simulate_listeners(self,
                            steps: int,
                            listener_ids: torch.Tensor,
@@ -359,41 +408,53 @@ class MassSpringModel(nn.Module):
         y  = (1.0 - w) * y0 + w * y1                               # [T_audio, C]
         return y
 
-    def mix_down(self,
-                 multich: torch.Tensor,     # [T, C]
-                 layout: str = "stereo",    # 'mono' | 'stereo'
-                 method: str = "by_position",
-                 listener_ids: torch.Tensor | None = None,
-                 plane: tuple[int,int] = (0,2),
-                 target_peak: float = 0.99,
-                 soft_clip: bool = True,
-                 clip_drive: float = 2.0) -> torch.Tensor:
+    def mix_down(
+        self,
+        multich: torch.Tensor,            # [T, C]
+        layout: str = "stereo",           # 'mono' | 'stereo'
+        method: str = "by_position",
+        listener_ids: torch.Tensor | None = None,
+        plane: tuple[int,int] = (0,2),
+        normalize: bool = False,          # keep False during training
+        target_peak: float = 0.99,
+        soft_clip: bool = False,          # keep False during training
+        clip_drive: float = 2.0,
+        energy_comp: bool = True,         # divide by sqrt(C) to stabilize loudness
+    ) -> torch.Tensor:
         """
         Mix C listeners to mono/stereo (Torch). Returns [T, K].
+        Designed to be training-friendly (purely linear by default).
         """
-        device = multich.device
+        device, dtype = multich.device, multich.dtype
         T, C = multich.shape
+
         if layout == "mono":
             y = multich.mean(dim=1, keepdim=True)                  # [T,1]
         elif layout == "stereo":
             if listener_ids is None:
                 raise ValueError("listener_ids required for stereo mixing when method='by_position'")
-            # get static listener positions (rest_pos are fine)
-            lp = self.rest_pos[listener_ids.to(device, dtype=torch.long)]  # [C,3]
-            G = _stereo_mixer_t(C, method=method, listener_pos=lp, plane=plane).to(device)  # [C,2]
-            y = multich @ G                                        # [T,2]
+            # cache G if listeners are static
+            if not hasattr(self, "_G_cache") or self._G_cache is None \
+            or self._G_cache.shape[0] != C:
+                lp = self.rest_pos[listener_ids.to(device, dtype=torch.long)]  # [C,3]
+                G = _stereo_mixer_tt(C, method=method, listener_pos=lp, plane=plane,
+                                    device=device, dtype=dtype)                 # [C,2]
+                if energy_comp and C > 0:
+                    G = G / math.sqrt(C)                                       # stabilize loudness
+                self._G_cache = G                                              # cache on module
+            G = self._G_cache.to(device=device, dtype=dtype)
+            y = multich @ G                                                    # [T,2]
         else:
             raise ValueError("layout must be 'mono' or 'stereo'.")
 
-        # peak normalize
-        peak = torch.max(torch.abs(y)).clamp_min(1e-9)
-        y = y * (target_peak / peak)
-
-        # optional soft clip
+        # Optional post-faders (disable for training)
+        if normalize:
+            peak = torch.maximum(torch.abs(y).amax(dim=0, keepdim=True), torch.tensor(1e-9, device=device, dtype=dtype))
+            y = y * (target_peak / peak)
         if soft_clip:
-            y = torch.tanh(y * clip_drive) / torch.tanh(torch.tensor(clip_drive, device=device, dtype=y.dtype))
+            y = torch.tanh(y * clip_drive) / torch.tanh(torch.as_tensor(clip_drive, device=device, dtype=dtype))
 
-        return y  # [T, K]
+        return y
 
     def render_audio(self,
                      seconds: float,
@@ -428,21 +489,29 @@ class MassSpringModel(nn.Module):
 
         # (optional) DC-block at sim rate before resampling (helps big drifts for positions)
         if hp:
-            raw = _dc_block_t(raw)
+            # raw = _dc_block_t(raw)
+            raw = self.highpass_observer3d(raw, R=0.95, prime_on_first_call=True)
+
 
         # resample to audio
-        audio_mc = self.resample_to_audio(raw, fs=fs)  # [T_audio, C]
+        # audio_mc = self.resample_to_audio(raw, fs=fs)  # [T_audio, C]
+        audio_mc = raw
 
         # mix to target layout
-        audio = self.mix_down(audio_mc, layout=layout, method=pan_method, listener_ids=listener_ids)
+        # audio = self.mix_down(audio_mc, layout=layout, method=pan_method, listener_ids=listener_ids)
+        audio = self.mix_down(audio_mc,
+                            layout=layout,             # mono is cheaper for CLAP; stereo if you need it
+                            method=pan_method,
+                            listener_ids=listener_ids,
+                            normalize=False,
+                            soft_clip=False,
+                            energy_comp=True) # For stereo, energy_comp helps keep loudness stable
 
         # final gain & clamp
-        # audio = torch.clamp(audio * gain, -1, 1)
         audio = audio * gain
-        fade_len = int(0.1 * fs)  # 600 ms fade-in
-        fade = torch.linspace(0, 1, fade_len).unsqueeze(-1).to(device)
-        audio[:fade_len, :] *= fade
         audio = audio.squeeze()
+        peak = torch.maximum(torch.abs(audio).amax(), torch.tensor(1e-9, device=audio.device)).detach()
+        audio = audio / peak
 
         return audio  # [T_audio, K]
 
@@ -460,12 +529,14 @@ class MassSpringModel(nn.Module):
         self.m_pos  = self.rest_pos.clone() if reset_to_rest else self.m_pos.detach()
         self.m_posR = self.rest_pos.clone() if reset_to_rest else self.m_posR.detach()
         self.m_frc  = torch.zeros_like(self.m_frc)
-        # Make sure values are non negative with relu
+        self.hp_x_prev = torch.zeros(0, device=self.nodes.device, dtype=self.nodes.dtype)
+        self.hp_y_prev = torch.zeros(0, device=self.nodes.device, dtype=self.nodes.dtype)
+        self.hp_primed = False
         with torch.no_grad():
             self.inv_mass.data.clamp_min_(1e-8)
-            self.k.data.clamp_min_(1e-8)
-            self.z.data.clamp_min_(0.0)
-            self.fric.data.clamp_min_(0.0)
+            # self.k.data.clamp_min_(1e-8)
+            # self.z.data.clamp_min_(0.0)
+            # self.fric.data.clamp_min_(0.0)
 
 
 if __name__ == "__main__":
@@ -474,7 +545,7 @@ if __name__ == "__main__":
 
     model = MassSpringModel.from_json(
         "../model_configs/sonobox_data/baselines/biosonix_3D.json",
-        device=device, dt=1/16000
+        device=device, dt=1/fs
     )
     model.train()  # enable grads
 
@@ -489,7 +560,7 @@ if __name__ == "__main__":
 
     events = {
         8000: (3, 3, 3),
-        12000: (0, 0, 5),
+        12000: (3, 3, 5),
         # more events...
     }
     audio = model.render_audio(
@@ -507,10 +578,6 @@ if __name__ == "__main__":
     import soundfile as sf, sounddevice as sd
     sf.write("mass_spring.wav", audio.detach().cpu().numpy(), 16000)
     sd.play(audio.detach().cpu().numpy(), 16000); sd.wait()
-    # # Can we play the audio with another library
-    # # Save spectogram of audio
-    # print("plotting spectrogram")
-    # plot_spectrogram(audio=audio, fs=fs)
 
     loss = torch.mean(audio**2)
     print("Audio loss:", loss.item())
@@ -518,6 +585,6 @@ if __name__ == "__main__":
 
     # Example: inspect gradients exist
     def mean_abs(x): return float(x.detach().abs().mean().cpu())
-    print("grad|K|   :", mean_abs(model.k.grad))
-    print("grad|invM|:", mean_abs(model.inv_mass.grad))
-    print("grad|edgeZ|:", mean_abs(model.z.grad))
+    # print("grad|K|   :", model.theta_k.grad)
+    # print("grad|Z|:", model.theta_z.grad)
+    # print("grad|fric|:", model.theta_fric.grad)
