@@ -1,7 +1,7 @@
 from pathlib import Path
 from tqdm import tqdm
 
-from diff_mass_spring_model_tied import MassSpringModel
+from diff_mass_spring_model_tied_exp import MassSpringModel
 import torch
 import numpy as np
 from audiotools import AudioSignal
@@ -201,7 +201,9 @@ def text2fx(
 
         if log_tensorboard or export_audio or detailed_log:
             with open(log_file, "a") as log:
-                log.write(f"Iteration {n}: roll_amount: {roll_amount.cpu().numpy()}\n")
+                params = torch.cat([p.view(-1) for p in mass_spring_model.parameters() if p.requires_grad])
+                log.write(f"Iteration {n} Params Values: {params.data.cpu().numpy()}\n")
+                log.write(f"Iteration {n} Loss: {loss.item()}\n")
 
         for i in range(sig_roll.batch_size):
             rolled = torch.roll(sig_roll.samples[i], shifts=roll_amount[i].item(), dims=-1)
