@@ -472,7 +472,7 @@ if __name__ == "__main__":
 
     model = MassSpringModel.from_json(
         "../model_configs/sonobox_data/baselines/biosonix_3D.json",
-        device=device, dt=1/1000
+        device=device, dt=1/16000
     )
     model.train()  # enable grads
 

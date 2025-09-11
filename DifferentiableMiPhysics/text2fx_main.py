@@ -229,18 +229,15 @@ def text2fx(
 
 
         # Get CLAP embedding for effected audio
-        embedding_effected = clap.get_audio_embeddings(signal_sim) #.get_audio_embeddings takes in preprocessed audio
+        embedding_sim = clap.get_audio_embeddings(signal_sim) #.get_audio_embeddings takes in preprocessed audio
 
         # Calculating Loss
         if criterion == "directional_loss":
-            batch_loss = clip_directional_loss(embedding_effected, audio_in_emb, embedding_target, text_anchor_emb)
-            # loss = clip_directional_loss(embedding_effected, audio_in_emb, embedding_target, text_anchor_emb).mean()
+            batch_loss = clip_directional_loss(embedding_sim, audio_in_emb, embedding_target, text_anchor_emb)
         elif criterion == "standard": #is neg dot product loss aims to minimize the dot prod b/w dissimilar items, no direction intake
-            batch_loss = -(embedding_effected @ embedding_target.T)
-            # loss = -(embedding_effected @ embedding_target.T).mean()
+            batch_loss = -(embedding_sim @ embedding_target.T)
         elif criterion == "cosine-sim": # cosine_sim loss aims to maximize the cosine similarity between similar items, normalized
-            batch_loss = 1 - torch.cosine_similarity(embedding_effected, embedding_target, dim=-1)
-            # loss = 1 - torch.cosine_similarity(embedding_effected, embedding_target, dim=-1).mean()
+            batch_loss = 1 - torch.cosine_similarity(embedding_sim, embedding_target, dim=-1)
         else:
             raise ValueError(f"Criterion {criterion} not recognized")
         
