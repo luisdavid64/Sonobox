@@ -6,7 +6,6 @@ from typing import Optional
 from topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
 from viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram
 from audio_helpers import _axis_pick_t, _dc_block_t, _stereo_mixer_t, _stereo_mixer_tt
-torch.autograd.set_detect_anomaly(True)
 import json
 
 class MassSpringModel(nn.Module):
