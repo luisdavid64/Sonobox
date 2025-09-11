@@ -539,12 +539,9 @@ class MassSpringModel(nn.Module):
         self.m_pos  = self.rest_pos.clone() if reset_to_rest else self.m_pos.detach()
         self.m_posR = self.rest_pos.clone() if reset_to_rest else self.m_posR.detach()
         self.m_frc  = torch.zeros_like(self.m_frc)
-        # Make sure values are non negative with relu
-        # with torch.no_grad():
-        #     # self.inv_mass.data.clamp_min_(1e-8)
-        #     self.k.data.clamp_min_(1e-8)
-        #     self.z.data.clamp_min_(0.0)
-        # self.fric.data.clamp_min_(0.0)
+        self.hp_x_prev = torch.zeros(0, device=self.nodes.device, dtype=self.nodes.dtype)
+        self.hp_y_prev = torch.zeros(0, device=self.nodes.device, dtype=self.nodes.dtype)
+        self.hp_primed = False
 
 
 if __name__ == "__main__":
