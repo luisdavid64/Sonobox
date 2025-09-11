@@ -98,6 +98,13 @@ class MassSpringModel(nn.Module):
         self.theta_z = nn.Parameter(torch.tensor(0.0))   # edge damping scale
         self.theta_fric = nn.Parameter(torch.tensor(0.0))   # edge damping scale
 
+        # listener HPF state
+        self.m_coef = 0.95
+        self.register_buffer("hp_x_prev", torch.zeros(0))
+        self.register_buffer("hp_y_prev", torch.zeros(0))
+        self.hp_primed = False  # if False, we will prime on first call
+
+
     # ---------------- miPhysics-like API ----------------
 
     def resetForce(self):
@@ -306,6 +313,46 @@ class MassSpringModel(nn.Module):
 
     #---------------- audio ----------------
 
+    def _ensure_hp_state(self, C, device, dtype):
+            if self.hp_x_prev.numel() != C:
+                self.hp_x_prev = torch.zeros(C, device=device, dtype=dtype)
+                self.hp_y_prev = torch.zeros(C, device=device, dtype=dtype)
+                self.hp_primed = False
+
+    def highpass_observer3d(self, x: torch.Tensor, R: float | None = None,
+                            prime_on_first_call: bool = True) -> torch.Tensor:
+        """
+        x: [T, C] already axis-picked (pos/force)
+        y[n] = x[n] - x[n-1] + R*y[n-1], with persistent state.
+        If prime_on_first_call: set x[-1]=x[0], y[-1]=0 at first call to avoid a click.
+        """
+        if R is None: R = self.hp_R
+        T, C = x.shape
+        self._ensure_hp_state(C, x.device, x.dtype)
+
+        y = torch.empty_like(x)
+        x_prev = self.hp_x_prev
+        y_prev = self.hp_y_prev
+
+        # Optional priming to avoid the initial pop
+        if prime_on_first_call and not self.hp_primed and T > 0:
+            x_prev = x[0]            # treat "previous input" as first sample
+            y_prev = torch.zeros_like(x_prev)
+            self.hp_primed = True
+
+        R = torch.as_tensor(R, device=x.device, dtype=x.dtype)
+
+        for n in range(T):
+            y_n = x[n] - x_prev + R * y_prev
+            y[n] = y_n
+            x_prev = x[n]
+            y_prev = y_n
+
+        # store state (detached so no graph carry)
+        self.hp_x_prev = x_prev.detach()
+        self.hp_y_prev = y_prev.detach()
+        return y
+
     def simulate_listeners(self,
                            steps: int,
                            listener_ids: torch.Tensor,
@@ -450,7 +497,9 @@ class MassSpringModel(nn.Module):
 
         # (optional) DC-block at sim rate before resampling (helps big drifts for positions)
         if hp:
-            raw = _dc_block_t(raw)
+            # raw = _dc_block_t(raw)
+            raw = self.highpass_observer3d(raw, R=0.95, prime_on_first_call=True)
+
 
         # resample to audio
         # audio_mc = self.resample_to_audio(raw, fs=fs)  # [T_audio, C]
