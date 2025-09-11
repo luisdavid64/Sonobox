@@ -115,8 +115,8 @@ def text2fx(
     else:
         writer = False
 
-    # Choosing random FX params to start
-    params = mass_spring_model.parameters()
+    # Print number of tunable parameters:
+    print("No tunable params:", sum(p.numel() for p in mass_spring_model.parameters() if p.requires_grad))
     
     # Log the model, torch amount, starting parameters, and their values
     if log_tensorboard or export_audio or detailed_log:
@@ -131,7 +131,7 @@ def text2fx(
             log.write(f"Custom roll?: {roll_amt}\n")
             log.write("="*40 + "\n")
 
-    optimizer = torch.optim.Adam(params, lr=lr)     # the optimizer!
+    optimizer = torch.optim.Adam(mass_spring_model.parameters(), lr=lr)     # the optimizer!
 
     events = {
         8000: (3, 3, 3),
@@ -191,10 +191,6 @@ def text2fx(
     # Single-Instance Optimization: Optimize our parameters by matching effected audio against the target text embedding
     pbar = tqdm(range(n_iters), total=n_iters)
     for n in pbar:
-        print("Param values iter {n}:")
-        print("K:", mass_spring_model.k*torch.exp(mass_spring_model.theta_k))
-        print("Z:", mass_spring_model.z*torch.exp(mass_spring_model.theta_z))
-        print("fric:", mass_spring_model.fric)
         # Apply effect with out estimated parameters
         # Code for signal rolling
         sig_roll = sig.clone()
@@ -213,6 +209,10 @@ def text2fx(
             sig_roll.samples[i:i+1] = rolled
 
         mass_spring_model.detach_state(reset_to_rest=True)
+        print("Param values iter {n}:")
+        print("K:",    (mass_spring_model.k * torch.exp(mass_spring_model.theta_k)).detach().item())
+        print("Z:",    (mass_spring_model.z * torch.exp(mass_spring_model.theta_z)).detach().item())
+        print("fric:", (mass_spring_model.fric * torch.exp(mass_spring_model.theta_fric)).detach().item())
         signal_mi = mass_spring_model.render_audio(
             seconds=seconds,
             fs=fs,
