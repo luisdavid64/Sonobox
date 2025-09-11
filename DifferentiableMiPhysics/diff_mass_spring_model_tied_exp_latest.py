@@ -517,6 +517,8 @@ class MassSpringModel(nn.Module):
         # final gain & clamp
         audio = audio * gain
         audio = audio.squeeze()
+        peak = torch.maximum(torch.abs(audio).amax(), torch.tensor(1e-9, device=audio.device)).detach()
+        audio = audio / peak
 
         return audio  # [T_audio, K]
 

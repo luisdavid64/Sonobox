@@ -53,7 +53,7 @@ def main(model_config_path: Union[str, Path],
     mass_spring_model.train()  # enable grads
     print(f'2. created mass_spring_model from {model_config_path}')
 
-    # Apply text-to-FX processing
+    # Apply text-to-FX processng
     print(f'3. applying text2fx on mass_spring_model ..., target: {text_target}')
     if detailed_log:
         print('with detailed logging every 100 iters')
