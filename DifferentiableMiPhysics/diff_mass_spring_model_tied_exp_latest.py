@@ -464,7 +464,7 @@ class MassSpringModel(nn.Module):
                             listener_ids=listener_ids,
                             normalize=False,
                             soft_clip=False,
-                            energy_comp=True)
+                            energy_comp=True) # For stereo, energy_comp helps keep loudness stable
 
         # final gain & clamp
         # audio = torch.clamp(audio * gain, -1, 1)
