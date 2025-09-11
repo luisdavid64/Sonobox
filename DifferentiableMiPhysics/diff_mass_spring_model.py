@@ -14,6 +14,7 @@ class MassSpringModel(nn.Module):
       - per-mass state: m_pos, m_posR (delayed pos), m_frc (force buffer)
       - per-mass params: inv_mass, mass_damp, radius
       - per-edge params: k (stiffness), rest (rest length), z (relative damping)
+      - miPhysics: simulates at audio rate (dt=1/16000)
     """
     def __init__(self, nodes, edge_index, springs,
                  drivers=None, listeners=None, config=None,
