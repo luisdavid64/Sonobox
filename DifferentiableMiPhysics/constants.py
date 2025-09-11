@@ -20,3 +20,12 @@ EQ_freq_bands = [20, 50, 83, 120, 161, 208, 259, 318, 383, 455, 537, 628, 729, 8
               15675, 17566, 19682]
 
 EQ_words_top_10 = ["warm", "cold", "soft", "loud", "happy", "bright", "soothing", "harsh", "heavy", "cool"]
+
+EXAMPLE_PROMPTS = [
+    "wooden mallet, marimba-like",
+    "dry percussive thud",
+    "glassy with long sustain",
+    "church bell, long ring",
+    "music box, tinkly highs",
+    "anvil hit, clangy"
+]

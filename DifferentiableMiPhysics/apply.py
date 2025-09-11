@@ -98,7 +98,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process an audio file with a given FX chain to match a description.")
 
     parser.add_argument("--model_config_path", default="../model_configs/sonobox_data/baselines/biosonix_3D.json", type=str, help="Path to the model config file.")
-    parser.add_argument("--text_target", type=str, default='wooden mallet, marimba-like', help="Text description to match.")
+    # parser.add_argument("--text_target", type=str, default='wooden mallet, marimba-like', help="Text description to match.")
+    parser.add_argument("--text_target", type=str, default='church bell, long ring', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='dry percussive thud', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='glassy with long sustain', help="Text description to match.")
     parser.add_argument("--export_dir", type=str, default="exp", help="Dir Path to save optimized audio file.")

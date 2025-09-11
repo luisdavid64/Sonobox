@@ -189,9 +189,9 @@ def text2fx(
         with open(log_file, "a") as log:
             # Get parameters with names
             log.write(f"Beginning Parameters:\n") 
-            log.write("K:",    (mass_spring_model.k).detach().item())
-            log.write("Z:",    (mass_spring_model.z).detach().item())
-            log.write("fric:", (mass_spring_model.fric).detach().item())
+            log.write(f"K: {mass_spring_model.k.detach().item()}\n")
+            log.write(f"Z: {mass_spring_model.z.detach().item()}\n")
+            log.write(f"Friction: {mass_spring_model.fric.detach().item()}\n")
 
 
     # Single-Instance Optimization: Optimize our parameters by matching effected audio against the target text embedding
@@ -244,9 +244,9 @@ def text2fx(
             with open(log_file, "a") as log:
                 params = torch.cat([p.view(-1) for p in mass_spring_model.parameters() if p.requires_grad])
                 log.write(f"Iteration {n} Parameters:\n") 
-                log.write("K:",    (mass_spring_model.k).detach().item())
-                log.write("Z:",    (mass_spring_model.z).detach().item())
-                log.write("Friction:", (mass_spring_model.fric).detach().item())
+                log.write(f"K: {mass_spring_model.k.detach().item()}\n")
+                log.write(f"Z: {mass_spring_model.z.detach().item()}\n")
+                log.write(f"Friction: {mass_spring_model.fric.detach().item()}\n")
                 log.write(f"Loss: {loss.item()}\n")
 
 
