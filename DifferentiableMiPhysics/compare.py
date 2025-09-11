@@ -4,8 +4,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Paths to your WAV files
-file1 = '/Users/luisreyes/Sonify/SonoBox/DifferentiableMiPhysics/exp/2025-09-11/high-pitch-glassy-notes-with-big-sustain-006/optim_9.wav'
-file2 = '/Users/luisreyes/Sonify/SonoBox/DifferentiableMiPhysics/exp/2025-09-11/high-pitch-glassy-notes-with-big-sustain-006/starting.wav'
+file1 = 'exp/2025-09-11/wooden-mallet-marimba-like-003/starting.wav'
+file2 = 'exp/2025-09-11/wooden-mallet-marimba-like-003/optim_40_nice_wooden.wav'
+file1 = '/Users/luisreyes/Sonify/SonoBox/DifferentiableMiPhysics/exp/2025-09-11/church-bell-long-ring-002/starting.wav'
+file2 = '/Users/luisreyes/Sonify/SonoBox/DifferentiableMiPhysics/exp/2025-09-11/church-bell-long-ring-002/optim_40.wav'
 
 # Load audio
 y1, sr1 = librosa.load(file1, sr=None)
