@@ -185,18 +185,20 @@ def text2fx(
         text_anchor_emb = clap.get_text_embeddings(text_neg_processed).detach()
 
     final_losses = []
+    if log_tensorboard or export_audio or detailed_log:
+        with open(log_file, "a") as log:
+            # Get parameters with names
+            log.write(f"Beginning Parameters:\n") 
+            log.write("K:",    (mass_spring_model.k).detach().item())
+            log.write("Z:",    (mass_spring_model.z).detach().item())
+            log.write("fric:", (mass_spring_model.fric).detach().item())
+
 
     # Single-Instance Optimization: Optimize our parameters by matching effected audio against the target text embedding
     pbar = tqdm(range(n_iters), total=n_iters)
     for n in pbar:
         # Apply effect with out estimated parameters
         # Code for signal rolling
-
-        if log_tensorboard or export_audio or detailed_log:
-            with open(log_file, "a") as log:
-                params = torch.cat([p.view(-1) for p in mass_spring_model.parameters() if p.requires_grad])
-                log.write(f"Iteration {n} Params Values: {params.data.cpu().numpy()}\n")
-                log.write(f"Iteration {n} Loss: {loss.item()}\n")
 
         mass_spring_model.detach_state(reset_to_rest=True)
         # print(f"Param values iter {n}:")
@@ -237,6 +239,16 @@ def text2fx(
         # loss += 0.1* stability_penalty(mass_spring_model.k, 1/mass_spring_model.inv_mass, mass_spring_model.edge_index, mass_spring_model.fixed_mask, omega_max)
         if writer:
             writer.add_scalar("loss", loss.item(), n)
+
+        if log_tensorboard or export_audio or detailed_log:
+            with open(log_file, "a") as log:
+                params = torch.cat([p.view(-1) for p in mass_spring_model.parameters() if p.requires_grad])
+                log.write(f"Iteration {n} Parameters:\n") 
+                log.write("K:",    (mass_spring_model.k).detach().item())
+                log.write("Z:",    (mass_spring_model.z).detach().item())
+                log.write("Friction:", (mass_spring_model.fric).detach().item())
+                log.write(f"Loss: {loss.item()}\n")
+
 
         # Optimize
         optimizer.zero_grad()
