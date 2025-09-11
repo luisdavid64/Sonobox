@@ -91,7 +91,6 @@ def text2fx(
     save_dir: str = None, # figure out a save path automatically,
     params_init_type: str = "random",
     # seed_i: int = 0,
-    roll_amt: int = None,
     detailed_log: bool = False,
     export_audio: bool = False,
     log_tensorboard: bool = False,
@@ -128,7 +127,6 @@ def text2fx(
             log.write(f"Number of Iterations: {n_iters}\n")
             log.write(f"Criterion: {criterion}\n")
             log.write(f"Params Initialization Type: {params_init_type}\n")
-            log.write(f"Custom roll?: {roll_amt}\n")
             log.write("="*40 + "\n")
 
     optimizer = torch.optim.Adam(mass_spring_model.parameters(), lr=lr)     # the optimizer!
@@ -193,22 +191,12 @@ def text2fx(
     for n in pbar:
         # Apply effect with out estimated parameters
         # Code for signal rolling
-        sig_roll = sig.clone()
-        if roll_amt or roll_amt == 0:
-            roll_amount = torch.randint(-roll_amt, roll_amt + 1, (sig_roll.batch_size,))
-        else:
-            roll_amount = torch.randint(0, sig_roll.signal_length, (sig_roll.batch_size,))
 
         if log_tensorboard or export_audio or detailed_log:
             with open(log_file, "a") as log:
                 params = torch.cat([p.view(-1) for p in mass_spring_model.parameters() if p.requires_grad])
                 log.write(f"Iteration {n} Params Values: {params.data.cpu().numpy()}\n")
                 log.write(f"Iteration {n} Loss: {loss.item()}\n")
-
-        for i in range(sig_roll.batch_size):
-            rolled = torch.roll(sig_roll.samples[i], shifts=roll_amount[i].item(), dims=-1)
-            # print(rolled)
-            sig_roll.samples[i:i+1] = rolled
 
         mass_spring_model.detach_state(reset_to_rest=True)
         # print(f"Param values iter {n}:")

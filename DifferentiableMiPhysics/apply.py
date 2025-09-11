@@ -16,7 +16,6 @@ python -m text2fx.apply assets/multistem_examples/10s/bass.wav eq 'warm like a h
     --export_dir experiments/prod_final \
     --learning_rate 0.01 \
     --params_init_type random \
-    --roll_amt 10000 \
     --n_iters 400 \
     --criterion cosine-sim \
     --model ms_clap \
@@ -35,7 +34,6 @@ def main(model_config_path: Union[str, Path],
          export_dir: str = None,
          learning_rate: float = 0.01,
          params_init_type: str = 'random',
-         roll_amt: Optional[int] = None,
          n_iters: int = 600,
          criterion: str = 'cosine-sim',
          model: str = 'ms_clap',
@@ -75,7 +73,6 @@ def main(model_config_path: Union[str, Path],
         params_init_type=params_init_type,
         lr=learning_rate,
         n_iters=n_iters,
-        roll_amt=roll_amt,
         detailed_log=detailed_log,
         export_audio=True
     )
@@ -101,13 +98,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process an audio file with a given FX chain to match a description.")
 
     parser.add_argument("--model_config_path", default="../model_configs/sonobox_data/baselines/biosonix_3D.json", type=str, help="Path to the model config file.")
-    # parser.add_argument("--text_target", type=str, default='wooden mallet, marimba-like', help="Text description to match.")
+    parser.add_argument("--text_target", type=str, default='wooden mallet, marimba-like', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='dry percussive thud', help="Text description to match.")
-    parser.add_argument("--text_target", type=str, default='glassy with long sustain', help="Text description to match.")
+    # parser.add_argument("--text_target", type=str, default='glassy with long sustain', help="Text description to match.")
     parser.add_argument("--export_dir", type=str, default="exp", help="Dir Path to save optimized audio file.")
     parser.add_argument("--learning_rate", type=float, default=0.1, help="Learning rate for optimization.")
     parser.add_argument("--params_init_type", type=str, default='random', choices=['random', 'default'], help="Parameter initialization type.")
-    parser.add_argument("--roll_amt", type=int, default=None, help="Amount to roll.")
     parser.add_argument("--n_iters", type=int, default=600, help="Number of optimization iterations.")
     parser.add_argument("--criterion", type=str, default='cosine-sim', help="Optimization criterion.")
     parser.add_argument("--model", type=str, default='ms_clap', help="Model name.")
@@ -121,7 +117,6 @@ if __name__ == "__main__":
          args.export_dir,
          args.learning_rate, 
          args.params_init_type, 
-         args.roll_amt,
          args.n_iters, 
          args.criterion, 
          args.model,
