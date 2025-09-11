@@ -85,7 +85,7 @@ def text2fx(
     text: Union[str, List[str]],   
     device: str = "cuda" if torch.cuda.is_available() else "cpu", 
     log_audio_every_n: int = 1, 
-    lr: float = 5e-2, 
+    lr: float = 1e-2, 
     n_iters: int = 600,
     criterion: str = "standard", 
     save_dir: str = None, # figure out a save path automatically,
@@ -134,11 +134,22 @@ def text2fx(
     optimizer = torch.optim.Adam(mass_spring_model.parameters(), lr=lr)     # the optimizer!
 
     events = {
-        8000: (3, 3, 3),
-        1000: (0, 0, 5),
+        500: (0, 0, 5),
+        1000: (5,0,0),
+        1010: (0,5,0),
+        4000: (3, 3, 3),
+        6000: (1,1,1),
+        6050: (1,1,1),
+        6100: (1,1,1),
+        6200: (1,1,1),
+        6300: (1,1,1),
+        6500: (1,1,1),
+        6600: (1,1,1),
+        6700: (1,1,1),
+        7000: (5,5,5),
     }
     fs = 16000
-    seconds = 0.8
+    seconds = 1
     mass_spring_model.detach_state(reset_to_rest=True)
     init_sig = mass_spring_model.render_audio(
         seconds=seconds,

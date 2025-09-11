@@ -39,7 +39,7 @@ python -m text2fx.apply assets/multistem_examples/10s/guitar.wav eq reverb compr
 def main(model_config_path: Union[str, Path],
          text_target: str, 
          export_dir: str = None,
-         learning_rate: float = 0.01,
+         learning_rate: float = 0.1,
          params_init_type: str = 'random',
          roll_amt: Optional[int] = None,
          n_iters: int = 600,
@@ -107,7 +107,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process an audio file with a given FX chain to match a description.")
 
     parser.add_argument("--model_config_path", default="../model_configs/sonobox_data/baselines/biosonix_3D.json", type=str, help="Path to the model config file.")
-    parser.add_argument("--text_target", type=str, default='low-register, warm, round, thick, sub-emphasis, fleshy/skin-like', help="Text description to match.")
+    parser.add_argument("--text_target", type=str, default='high-pitch glassy notes with big sustain', help="Text description to match.")
     parser.add_argument("--export_dir", type=str, default="exp", help="Dir Path to save optimized audio file.")
     parser.add_argument("--learning_rate", type=float, default=0.01, help="Learning rate for optimization.")
     parser.add_argument("--params_init_type", type=str, default='random', choices=['random', 'default'], help="Parameter initialization type.")

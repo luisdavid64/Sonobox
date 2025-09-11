@@ -68,9 +68,6 @@ class MassSpringModel(nn.Module):
         # spring previous-distance state (used by dashpot term)
         self.register_buffer("m_prevDist", torch.zeros(self.E, device=nodes.device, dtype=nodes.dtype))
 
-        # optim parameters
-        self.theta_k = nn.Parameter(torch.tensor(0.0))   # stiffness scale
-        self.theta_z = nn.Parameter(torch.tensor(0.0))   # edge damping scale
 
         # Initialize rest lengths from geometry
         with torch.no_grad():
@@ -90,9 +87,14 @@ class MassSpringModel(nn.Module):
         self._listener_ids = self.get_listener_ids()
 
         # Global
-        self.fric = nn.Parameter(torch.tensor(friction, device=self.nodes.device, dtype=self.nodes.dtype))
+        self.fric = nn.Parameter(torch.tensor(friction, device=self.nodes.device, dtype=self.nodes.dtype), requires_grad=False)
         # We could use gravity if desired
         self.register_buffer("gravity", torch.zeros(3, device=self.nodes.device, dtype=self.nodes.dtype))
+
+        # optim parameters
+        self.theta_k = nn.Parameter(torch.tensor(0.0))   # stiffness scale
+        self.theta_z = nn.Parameter(torch.tensor(0.0))   # edge damping scale
+        self.theta_fric = nn.Parameter(torch.tensor(0.0))   # edge damping scale
 
     # ---------------- miPhysics-like API ----------------
 
@@ -119,7 +121,7 @@ class MassSpringModel(nn.Module):
         """
         k = self.k * torch.exp(self.theta_k)  # ensure positive
         z = self.z * torch.exp(self.theta_z)  # ensure positive
-        
+
         i, j = self.edge_index[0], self.edge_index[1]          # [E]
         d    = self.m_pos[j] - self.m_pos[i]                   # [E,3]
         m_dist = (d.pow(2).sum(-1) + 1e-12).sqrt()             # [E]
@@ -145,10 +147,9 @@ class MassSpringModel(nn.Module):
     def compute(self):
         # --- 1) integrate with previous forces ---
         invM  = self.inv_mass.view(-1, 1)                      # [N,1]
-        fr    = getattr(self, 'fric', None)
-        if fr is None:
-            fr = torch.zeros_like(self.inv_mass)
-        c     = (invM * fr.view(-1,1)).clamp(0.0, 1.9)         # [N,1]
+
+        fric = self.fric * torch.exp(self.theta_fric)  # ensure positive
+        c     = (invM * fric.view(-1,1)).clamp(0.0, 1.9)         # [N,1]
         gterm = self.gravity.view(1,3)                         # [1,3]
         F     = self.m_frc                                     # [N,3]
 
@@ -471,7 +472,7 @@ class MassSpringModel(nn.Module):
         #     # self.inv_mass.data.clamp_min_(1e-8)
         #     self.k.data.clamp_min_(1e-8)
         #     self.z.data.clamp_min_(0.0)
-        #     self.fric.data.clamp_min_(0.0)
+        # self.fric.data.clamp_min_(0.0)
 
 
 if __name__ == "__main__":
