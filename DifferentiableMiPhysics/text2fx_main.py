@@ -14,6 +14,7 @@ import json
 
 from core import Channel, create_save_dir, preprocess_audio, detensor_dict, slugify
 from constants import RUNS_DIR, SAMPLE_RATE, DEVICE
+torch.autograd.set_detect_anomaly(True)
 
 alpha = 0.5               # stability margin
 dt = 1/16000               # your physics step
@@ -134,10 +135,10 @@ def text2fx(
 
     events = {
         8000: (3, 3, 3),
-        12000: (0, 0, 5),
+        1000: (0, 0, 5),
     }
     fs = 16000
-    seconds = 1
+    seconds = 0.8
     mass_spring_model.detach_state(reset_to_rest=True)
     init_sig = mass_spring_model.render_audio(
         seconds=seconds,
@@ -289,26 +290,37 @@ def text2fx(
     # min_loss_index = int(np.argmin(final_losses)) # used for comparing across multiple runs
 
     # Play final signal with optimized effects parameters
-    clean_sig = preprocess_audio(sig_in) #taking full input sample 
-    out_sig = channel(clean_sig.clone().to(device), torch.sigmoid(params)).clone().detach().cpu()
-    # out_sig = channel(sig.clone().to(device), torch.sigmoid(params)).clone().detach().cpu()
-    out_sig = preprocess_audio(out_sig) 
-    out_params = params.detach().cpu() #optimized output FXparams
-    out_params_dict = channel.save_params_to_dict(out_params) #mapping back to FX ranges
+    # out_sig = channel(clean_sig.clone().to(device), torch.sigmoid(params)).clone().detach().cpu()
+    # out_sig = mass_spring_model.render_audio(
+    #     seconds=seconds,
+    #     fs=fs,
+    #     observable='pos',
+    #     axis='all',
+    #     listener_ids=mass_spring_model.get_listener_ids(),
+    #     layout='mono',
+    #     pan_method='by_position',
+    #     hp=True,
+    #     events=events
+    # )  # [T_audio, 1]
+    # out_sig = AudioSignal(out_sig, sample_rate=fs)
+    # # out_sig = channel(sig.clone().to(device), torch.sigmoid(params)).clone().detach().cpu()
+    # out_sig = preprocess_audio(out_sig) 
+    # out_params = params.detach().cpu() #optimized output FXparams
+    # out_params_dict = channel.save_params_to_dict(out_params) #mapping back to FX ranges
 
-    if export_audio:
-        if sig.batch_size == 1:
-            out_sig.detach().cpu().write(save_dir / f'{init_sig_path.stem}_final.wav')
-            # out_sig.clone().detach().cpu().write(save_dir / f'{init_sig_path.stem}_final.wav')
-        else:
-            for i, s in enumerate(out_sig):
-                i_init_sig_path = Path(init_sig.path_to_file[i])
-                out_sig[i].detach().cpu().write(save_dir / f'{i_init_sig_path.stem}_final.wav')
+    # if export_audio:
+    #     if sig.batch_size == 1:
+    #         out_sig.detach().cpu().write(save_dir / f'{init_sig_path.stem}_final.wav')
+    #         # out_sig.clone().detach().cpu().write(save_dir / f'{init_sig_path.stem}_final.wav')
+    #     else:
+    #         for i, s in enumerate(out_sig):
+    #             i_init_sig_path = Path(init_sig.path_to_file[i])
+    #             out_sig[i].detach().cpu().write(save_dir / f'{i_init_sig_path.stem}_final.wav')
 
-    # out_sig.write(save_dir / "final.wav")
+    # # out_sig.write(save_dir / "final.wav")
 
-    if writer:
-        writer.add_audio("final", out_sig.samples[0][0], n_iters, sample_rate=out_sig.sample_rate)
-        writer.close()
+    # if writer:
+    #     writer.add_audio("final", out_sig.samples[0][0], n_iters, sample_rate=out_sig.sample_rate)
+    #     writer.close()
 
-    return out_sig, out_params, out_params_dict
+    # return out_sig, out_params, out_params_dict

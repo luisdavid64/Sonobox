@@ -460,8 +460,8 @@ class MassSpringModel(nn.Module):
         self.m_frc  = torch.zeros_like(self.m_frc)
         # Make sure values are non negative with relu
         with torch.no_grad():
-            self.inv_mass.data.clamp_min_(1e-12)
-            self.k.data.clamp_min_(0.0)
+            self.inv_mass.data.clamp_min_(1e-8)
+            self.k.data.clamp_min_(1e-8)
             self.z.data.clamp_min_(0.0)
             self.fric.data.clamp_min_(0.0)
 
