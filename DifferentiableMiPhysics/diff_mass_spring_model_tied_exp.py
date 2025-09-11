@@ -87,7 +87,7 @@ class MassSpringModel(nn.Module):
         self._listener_ids = self.get_listener_ids()
 
         # Global
-        self._u_fric = nn.Parameter(torch.tensor(friction, device=self.nodes.device, dtype=self.nodes.dtype))  # maps to [0,2]
+        self._u_fric = nn.Parameter(torch.log(torch.tensor(friction, device=self.nodes.device, dtype=self.nodes.dtype)))  # maps to [0,2]
         # We could use gravity if desired
         self.register_buffer("gravity", torch.zeros(3, device=self.nodes.device, dtype=self.nodes.dtype))
 
