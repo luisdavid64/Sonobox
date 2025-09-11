@@ -14,7 +14,6 @@ class MassSpringModel(nn.Module):
       - per-mass state: m_pos, m_posR (delayed pos), m_frc (force buffer)
       - per-mass params: inv_mass, mass_damp, radius
       - per-edge params: k (stiffness), rest (rest length), z (relative damping)
-      - tick order: reset_forces -> drivers -> interactions -> constraints -> integrate -> listeners
     """
     def __init__(self, nodes, edge_index, springs,
                  drivers=None, listeners=None, config=None,
@@ -45,13 +44,12 @@ class MassSpringModel(nn.Module):
 
         # ----- per-mass parameters -----
         mass_from_nodes = nodes[:, 3].clamp_min(1e-12)
-        # We can optimize only inv_mass to keep positivity
         self.register_buffer("mass", mass_from_nodes.clone())
         inv_mass_init = 1.0 / mass_from_nodes  # per miPhysics
         self.inv_mass = nn.Parameter(inv_mass_init.clone())
         self.radius    = nn.Parameter(nodes[:, 4].clone(), requires_grad=False)
 
-        # fixed-mask (1.0 -> fixed); keep as buffer
+        # fixed nodes: 5th col of nodes is fixed flag (0/1)
         self.register_buffer("fixed_mask", nodes[:, 5].view(-1, 1).clone())
 
         # ----- per-edge parameters (from springs builder) -----
@@ -68,6 +66,7 @@ class MassSpringModel(nn.Module):
         # spring previous-distance state (used by dashpot term)
         self.register_buffer("m_prevDist", torch.zeros(self.E, device=nodes.device, dtype=nodes.dtype))
 
+        # Initialize rest lengths from geometry
         with torch.no_grad():
             i, j = self.edge_index[0], self.edge_index[1]
             d0 = self.rest_pos[j] - self.rest_pos[i]
@@ -82,15 +81,16 @@ class MassSpringModel(nn.Module):
 
         # Driver/listener index caches
         self._driver_ids = self.get_driver_ids()
+        self._listener_ids = self.get_listener_ids()
 
         # Global
         self.fric = nn.Parameter(torch.tensor(friction, device=self.nodes.device, dtype=self.nodes.dtype))
+        # We could use gravity if desired
         self.register_buffer("gravity", torch.zeros(3, device=self.nodes.device, dtype=self.nodes.dtype))
-        # self.use_dt_scaling = False
 
     # ---------------- miPhysics-like API ----------------
+
     def resetForce(self):
-        # functional (non-in-place) to keep graphs clean across steps
         self.m_frc = torch.zeros_like(self.m_frc)
 
     def applyForce(self, node_indices: torch.Tensor, force_vec):
@@ -173,7 +173,7 @@ class MassSpringModel(nn.Module):
                 self.compute()
         return self.m_pos
 
-    # ---------------- utilities ----------------
+    # ---------------- io utilities ----------------
     @classmethod
     def from_config(cls, config: dict, device: Optional[torch.device] = None, dt: float = 1/16000):
         def parse_mass_name(name):
@@ -266,6 +266,11 @@ class MassSpringModel(nn.Module):
             config = json.load(f)
         return cls.from_config(config, device=device, dt=dt)
 
+    # ---------------- mass utilities ----------------
+
+    def get_ids(self, tensor):
+        return [(i * self.dimY + j) * self.dimZ + k for (i, j, k) in tensor.tolist()]
+
     def get_driver_ids(self):
         if self.drivers is None or len(self.drivers) == 0:
             return None
@@ -278,11 +283,11 @@ class MassSpringModel(nn.Module):
         ids = self.get_ids(self.listeners)
         return torch.tensor(ids, device=self.nodes.device, dtype=torch.long)
 
-    def get_ids(self, tensor):
-        return [(i * self.dimY + j) * self.dimZ + k for (i, j, k) in tensor.tolist()]
-
     def get_fixed_ids(self):
         return torch.nonzero(self.fixed_mask.view(-1) > 0.5, as_tuple=False).view(-1)
+
+    # ---------------- visualization ----------------
+    """TODO: Implement dynamic visualization and interaction"""
 
     def visualize(self):
         plot_model_graph_3d(self)
@@ -466,7 +471,7 @@ if __name__ == "__main__":
 
     model = MassSpringModel.from_json(
         "../model_configs/sonobox_data/baselines/biosonix_3D.json",
-        device=device, dt=1/fs
+        device=device, dt=1/1000
     )
     model.train()  # enable grads
 
