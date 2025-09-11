@@ -1,7 +1,7 @@
 from pathlib import Path
 from tqdm import tqdm
 
-from diff_mass_spring_model_tied_exp import MassSpringModel
+from diff_mass_spring_model_tied_exp_latest import MassSpringModel
 import torch
 import numpy as np
 from audiotools import AudioSignal
@@ -220,7 +220,7 @@ def text2fx(
             sig_roll.samples[i:i+1] = rolled
 
         mass_spring_model.detach_state(reset_to_rest=True)
-        print("Param values iter {n}:")
+        print(f"Param values iter {n}:")
         print("K:",    (mass_spring_model.k * torch.exp(mass_spring_model.theta_k)).detach().item())
         print("Z:",    (mass_spring_model.z * torch.exp(mass_spring_model.theta_z)).detach().item())
         print("fric:", (mass_spring_model.fric * torch.exp(mass_spring_model.theta_fric)).detach().item())
