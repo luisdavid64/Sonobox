@@ -206,5 +206,5 @@ __marimo__/
 *.ini
 *.wav
 *.mp4
-DifferentiableMiPhysics/samples
-DifferentiableMiPhysics/exp
+DiffMIPhysics/samples
+DiffMIPhysics/exp

@@ -6,7 +6,7 @@ import torch
 from audiotools import AudioSignal
 
 import core as tc
-from DifferentiableMiPhysics.text2mi_main import text2mi
+from text2mi_main import text2mi
 from constants import SAMPLE_RATE, DEVICE
 
 
