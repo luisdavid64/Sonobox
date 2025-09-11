@@ -6,13 +6,13 @@ import torch
 from audiotools import AudioSignal
 
 import core as tc
-from text2fx_main import text2fx
+from DifferentiableMiPhysics.text2mi_main import text2mi
 from constants import SAMPLE_RATE, DEVICE
 
 
 """
 Example Call:
-python -m text2fx.apply assets/multistem_examples/10s/bass.wav eq 'warm like a hug' \
+python -m text2mi.apply assets/multistem_examples/10s/bass.wav eq 'warm like a hug' \
     --export_dir experiments/prod_final \
     --learning_rate 0.01 \
     --params_init_type random \
@@ -23,7 +23,7 @@ python -m text2fx.apply assets/multistem_examples/10s/bass.wav eq 'warm like a h
 
     
 case 1 (sparse): single audio file, single text_target
-python -m text2fx.apply assets/multistem_examples/10s/guitar.wav eq reverb compression 'cold and dark' \
+python -m text2mi.apply assets/multistem_examples/10s/guitar.wav eq reverb compression 'cold and dark' \
     --export_dir experiments/2025-01-28/guitar_multifx_2 \
     --params_init_type random \
     --n_iters 200 
@@ -40,7 +40,7 @@ def main(model_config_path: Union[str, Path],
          detailed_log:bool = False) -> Tuple[AudioSignal, torch.Tensor, dict]:
 
     # Preprocess full audio from path, return AudioSignal
-    print('text2fx on mass_spring_model')
+    print('text2mi on mass_spring_model')
 
     # Create mass_spring_model 
     fs = 16000
@@ -52,7 +52,7 @@ def main(model_config_path: Union[str, Path],
     print(f'2. created mass_spring_model from {model_config_path}')
 
     # Apply text-to-FX processng
-    print(f'3. applying text2fx on mass_spring_model ..., target: {text_target}')
+    print(f'3. applying text2mi on mass_spring_model ..., target: {text_target}')
     if detailed_log:
         print('with detailed logging every 100 iters')
     
@@ -64,7 +64,7 @@ def main(model_config_path: Union[str, Path],
     else:
         save_dir = None
         
-    signal_effected, out_params, out_params_dict = text2fx(
+    signal_effected, out_params, out_params_dict = text2mi(
         model_name=model, 
         mass_spring_model=mass_spring_model,
         text=text_target, 
@@ -86,7 +86,7 @@ def main(model_config_path: Union[str, Path],
         print(f'saving final audio .wav to {audio_path}')
         tc.export_sig(signal_effected, audio_path)
 
-        audio_path_in = save_dir / 'input_to_text2fx.wav'
+        audio_path_in = save_dir / 'input_to_text2mi.wav'
         print(f'saving initial audio .wav to {audio_path_in}')
         tc.export_sig(tc.preprocess_audio(in_sig), audio_path_in)
 

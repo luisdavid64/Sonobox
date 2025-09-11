@@ -44,7 +44,7 @@ def stability_penalty(k, m, edge_index, ground_mask, omega_max):
 
 """
 EX CLI USAGE
-python -m text2fx --input_audio "assets/speech_examples/VCTK_p225_001_mic1.flac"\
+python -m text2mi --input_audio "assets/speech_examples/VCTK_p225_001_mic1.flac"\
                  --text "this sound is happy" \
                  --criterion "cosine-sim" \
                  --n_iters 600 \
@@ -79,7 +79,7 @@ def clip_directional_loss(
         loss = 1 - torch.cosine_similarity(a_dir, b_dir, dim=-1)
         return loss
 
-def text2fx(
+def text2mi(
     model_name: str,
     mass_spring_model: MassSpringModel,
     text: Union[str, List[str]],   
