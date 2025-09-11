@@ -150,7 +150,7 @@ class MassSpringModel(nn.Module):
         invM  = self.inv_mass.view(-1, 1)                      # [N,1]
 
         fric = self.fric * torch.exp(self.theta_fric)  # ensure positive
-        c     = (invM * fric.view(-1,1)).clamp(0.0, 1.9)         # [N,1]
+        c     = (invM * fric.view(-1,1))                       # [N,1]
         gterm = self.gravity.view(1,3)                         # [1,3]
         F     = self.m_frc                                     # [N,3]
 
