@@ -48,6 +48,7 @@ class MassSpringModel(nn.Module):
         self.register_buffer("mass", mass_from_nodes.clone())
         inv_mass_init = 1.0 / mass_from_nodes  # per miPhysics
         self.inv_mass = nn.Parameter(inv_mass_init.clone(), requires_grad=False)
+        
         self.radius    = nn.Parameter(nodes[:, 4].clone(), requires_grad=False)
 
         # fixed nodes: 5th col of nodes is fixed flag (0/1)
@@ -144,6 +145,7 @@ class MassSpringModel(nn.Module):
         self.m_prevDist = m_dist.clone()
         return F
 
+    @torch.compile
     def compute(self):
         # --- 1) integrate with previous forces ---
         invM  = self.inv_mass.view(-1, 1)                      # [N,1]

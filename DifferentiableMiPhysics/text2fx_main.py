@@ -149,7 +149,7 @@ def text2fx(
         7000: (5,5,5),
     }
     fs = 16000
-    seconds = 1
+    seconds = 0.5
     mass_spring_model.detach_state(reset_to_rest=True)
     init_sig = mass_spring_model.render_audio(
         seconds=seconds,

@@ -11,12 +11,6 @@ from constants import SAMPLE_RATE, DEVICE
 
 
 """
-Script to process a single audio file with a given FX chain to match a description.
-Optional arguments include learning rate, number of steps, loss type, parameter initialization, and augmentation params.
-The script saves:
-- A dictionary of optimized effect controls as JSON (specified by export_dir).
-- Exported optimized audio file (saved to export_dir).
-
 Example Call:
 python -m text2fx.apply assets/multistem_examples/10s/bass.wav eq 'warm like a hug' \
     --export_dir experiments/prod_final \
@@ -107,7 +101,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process an audio file with a given FX chain to match a description.")
 
     parser.add_argument("--model_config_path", default="../model_configs/sonobox_data/baselines/biosonix_3D.json", type=str, help="Path to the model config file.")
-    parser.add_argument("--text_target", type=str, default='high-pitch glassy notes with big sustain', help="Text description to match.")
+    parser.add_argument("--text_target", type=str, default='glassy with long sustain', help="Text description to match.")
     parser.add_argument("--export_dir", type=str, default="exp", help="Dir Path to save optimized audio file.")
     parser.add_argument("--learning_rate", type=float, default=0.01, help="Learning rate for optimization.")
     parser.add_argument("--params_init_type", type=str, default='random', choices=['random', 'default'], help="Parameter initialization type.")
