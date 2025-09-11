@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Union, List, Optional, Tuple
-from diff_mass_spring_model import MassSpringModel
+from diff_mass_spring_model_tied_exp import MassSpringModel
 import torch
 
 from audiotools import AudioSignal

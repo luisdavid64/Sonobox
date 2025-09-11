@@ -1,7 +1,7 @@
 from pathlib import Path
 from tqdm import tqdm
 
-from diff_mass_spring_model import MassSpringModel
+from diff_mass_spring_model_tied_exp import MassSpringModel
 import torch
 import numpy as np
 from audiotools import AudioSignal
@@ -191,6 +191,10 @@ def text2fx(
     # Single-Instance Optimization: Optimize our parameters by matching effected audio against the target text embedding
     pbar = tqdm(range(n_iters), total=n_iters)
     for n in pbar:
+        print("Param values iter {n}:")
+        print("K:", mass_spring_model.k*torch.exp(mass_spring_model.theta_k))
+        print("Z:", mass_spring_model.z*torch.exp(mass_spring_model.theta_z))
+        print("fric:", mass_spring_model.fric)
         # Apply effect with out estimated parameters
         # Code for signal rolling
         sig_roll = sig.clone()
@@ -221,12 +225,6 @@ def text2fx(
             events=events
         )  # [T_audio, 1]
         signal_sim = AudioSignal(signal_mi, sample_rate=fs)
-        print("  |K|   :", torch.mean(torch.abs(mass_spring_model.k)).item())
-        print("  |edgeZ|:", torch.mean(torch.abs(mass_spring_model.z)).item())
-        # Print inv mass and friction
-        print("  |invM| :", torch.mean(torch.abs(mass_spring_model.inv_mass)).item())
-        print(" |fric| :", torch.mean(torch.abs(mass_spring_model.fric)).item())
-
 
         # Get CLAP embedding for effected audio
         embedding_sim = clap.get_audio_embeddings(signal_sim) #.get_audio_embeddings takes in preprocessed audio
