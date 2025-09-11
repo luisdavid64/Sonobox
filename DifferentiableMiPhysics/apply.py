@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Union, List, Optional, Tuple
-from diff_mass_spring_model_tied_exp_latest import MassSpringModel
+from diff_mass_spring_model_tied import MassSpringModel
 import torch
 
 from audiotools import AudioSignal
@@ -33,7 +33,7 @@ python -m text2fx.apply assets/multistem_examples/10s/guitar.wav eq reverb compr
 def main(model_config_path: Union[str, Path],
          text_target: str, 
          export_dir: str = None,
-         learning_rate: float = 0.1,
+         learning_rate: float = 0.001,
          params_init_type: str = 'random',
          roll_amt: Optional[int] = None,
          n_iters: int = 600,

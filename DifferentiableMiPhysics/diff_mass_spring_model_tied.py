@@ -121,8 +121,8 @@ class MassSpringModel(nn.Module):
         dir is the *current* unit direction.
         Updates self.m_prevDist <- L (kept with full graph for BPTT).
         """
-        k = torch.exp(self.k)
-        z = torch.exp(self.z)
+        k = self.k
+        z = self.z
         i, j = self.edge_index[0], self.edge_index[1]          # [E]
         d    = self.m_pos[j] - self.m_pos[i]                   # [E,3]
         m_dist = (d.pow(2).sum(-1) + 1e-12).sqrt()             # [E]
@@ -149,7 +149,7 @@ class MassSpringModel(nn.Module):
         # --- 1) integrate with previous forces ---
         invM  = self.inv_mass.view(-1, 1)                      # [N,1]
 
-        fric = 2.0*torch.sigmoid(self.fric) 
+        fric = self.fric
         c     = (invM * fric.view(-1,1))                       # [N,1]
         gterm = self.gravity.view(1,3)                         # [1,3]
         F     = self.m_frc                                     # [N,3]
@@ -534,9 +534,9 @@ class MassSpringModel(nn.Module):
         self.hp_primed = False
         with torch.no_grad():
             self.inv_mass.data.clamp_min_(1e-8)
-            # self.k.data.clamp_min_(1e-8)
-            # self.z.data.clamp_min_(0.0)
-            # self.fric.data.clamp_min_(0.0)
+            self.k.data.clamp_min_(1e-8)
+            self.z.data.clamp_min_(1e-8)
+            self.fric.data.clamp_(1e-6, 2)
 
 
 if __name__ == "__main__":
