@@ -134,23 +134,12 @@ def text2fx(
     optimizer = torch.optim.Adam(mass_spring_model.parameters(), lr=lr)     # the optimizer!
 
     events = {
-        500: (0, 0, 5),
-        1000: (5,0,0),
-        1010: (0,5,0),
-        4000: (3, 3, 3),
-        6000: (1,1,1),
-        6050: (1,1,1),
-        6100: (1,1,1),
-        6200: (1,1,1),
-        6300: (1,1,1),
-        6500: (1,1,1),
-        6600: (1,1,1),
-        6700: (1,1,1),
-        7000: (5,5,5),
+        8000: (3, 3, 3),
+        12000: (3, 3, 5),
+        # more events...
     }
     fs = 16000
-    seconds = 0.5
-    mass_spring_model.detach_state(reset_to_rest=True)
+    seconds = 1 
     init_sig = mass_spring_model.render_audio(
         seconds=seconds,
         fs=fs,
@@ -251,7 +240,7 @@ def text2fx(
             raise ValueError(f"Criterion {criterion} not recognized")
         
         loss = batch_loss.mean()
-        loss += 0.1* stability_penalty(mass_spring_model.k, 1/mass_spring_model.inv_mass, mass_spring_model.edge_index, mass_spring_model.fixed_mask, omega_max)
+        # loss += 0.1* stability_penalty(mass_spring_model.k, 1/mass_spring_model.inv_mass, mass_spring_model.edge_index, mass_spring_model.fixed_mask, omega_max)
         if writer:
             writer.add_scalar("loss", loss.item(), n)
 

@@ -45,7 +45,7 @@ def main(model_config_path: Union[str, Path],
     print('text2fx on mass_spring_model')
 
     # Create mass_spring_model 
-    fs = 16_000
+    fs = 16000
     mass_spring_model = MassSpringModel.from_json(
         model_config_path,
         device=DEVICE, dt=1/fs
