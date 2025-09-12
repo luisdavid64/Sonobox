@@ -7,6 +7,7 @@ from util.util import event_dict_seconds_to_samples
 from util.topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
 from util.viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram
 from util.audio_helpers import axis_pick_t, mix_down
+from util.config_utils import load_config, save_config, model_to_config
 import json
 
 class MassSpringModel(nn.Module):
@@ -226,58 +227,19 @@ class MassSpringModel(nn.Module):
                    dimX=dimX, dimY=dimY, dimZ=dimZ, dist=dist,
                    interactionType=interactionType, bounds=bounds, dt=dt, friction=friction)
 
-    # Convert 
-    def to_json(self, path: str):
-        # Convert fields to JSON-serializable types, as done in from_config
-        def tensor_to_list(tensor):
-            return tensor.detach().cpu().tolist() if tensor is not None else []
-        def float_or_list(value):
-            if isinstance(value, (list, tuple)):
-                return [float(v) for v in value]
-            return float(value)
-        def int_or_list(value):
-            if isinstance(value, (list, tuple)):
-                return [int(v) for v in value]
-            return int(value)   
-        def parse_mass_name(name):
-            p = name.split("_")
-            if len(p) != 4 or p[0] != "m":
-                raise ValueError(f"Invalid mass name: {name}")
-            return tuple(int(x) for x in p[1:])
-        def mass_name(i, j, k):
-            return f"m_{i}_{j}_{k}"
-        geom = {
-            "dx": int_or_list(self.dimX),
-            "dy": int_or_list(self.dimY),
-            "dz": int_or_list(self.dimZ),
-            "distance": float_or_list(self.dist),
-            "massesRadius": float_or_list(self.radius[0].item()),
-            "interactionType": self.interactionType,
-        }
-        params = {
-            "M": float_or_list(torch.mean(1/self.inv_mass).item()),
-            "K": float_or_list(torch.mean(self.k).item()),
-            "C": float_or_list(torch.mean(self.z).item()),
-        }
-        sonification_set_up = {
-            "drivers": [mass_name(*idx) for idx in tensor_to_list(self.drivers)],
-            "listeners": [mass_name(*idx) for idx in tensor_to_list(self.listeners)],
-        }
-        config = {
-            "geometry": geom,
-            "parameters": params,
-            "sonification_set_up": sonification_set_up,
-            "model": "3D",
-            "global_friction": float(self.fric.item()),
-            "bounds": self.bounds,
-            
-        }
-        with open(path, "w") as f:
-            json.dump(config, f, indent=4)
-            f.write("\n")
-            f.flush()
-            os.fsync(f.fileno())
+    @classmethod
+    def from_json(cls, path: str, device: Optional[torch.device] = None, dt: float = 1/16000):
+        config = load_config(path)
+        return cls.from_config(config, device=device, dt=dt)
 
+    def to_config(self):
+        return model_to_config(self)
+
+    def to_json(self, path: str):
+        config = self.to_config()
+        save_config(config, path)
+
+    # Convert 
     @classmethod
     def from_json(cls, path: str, device: Optional[torch.device] = None, dt: float = 1/16000):
         with open(path, "r") as f:
