@@ -5,7 +5,7 @@ from torch import nn
 from typing import Optional
 from topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
 from viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram
-from audio_helpers import _axis_pick_t, _dc_block_t, _stereo_mixer_t, _stereo_mixer_tt
+from audio_helpers import axis_pick_t, stereo_mixer_t
 import json
 
 class MassSpringModel(nn.Module):
@@ -376,12 +376,12 @@ class MassSpringModel(nn.Module):
             pos_abs = self.m_pos
             if observable == "pos":
                 val = pos_abs[ids]                                   # [C,3]
-                out[t] = _axis_pick_t(val, axis)                     # [C]
+                out[t] = axis_pick_t(val, axis)                     # [C]
             elif observable == "force":
                 # recompute spring forces at *current* state
                 Fspr = self.spring_damper_forces()   # [N,3]
                 val = Fspr[ids]
-                out[t] = _axis_pick_t(val, axis)
+                out[t] = axis_pick_t(val, axis)
             else:
                 raise ValueError("observable must be 'pos' | 'force'.")
 
@@ -443,7 +443,7 @@ class MassSpringModel(nn.Module):
             if not hasattr(self, "_G_cache") or self._G_cache is None \
             or self._G_cache.shape[0] != C:
                 lp = self.rest_pos[listener_ids.to(device, dtype=torch.long)]  # [C,3]
-                G = _stereo_mixer_tt(C, method=method, listener_pos=lp, plane=plane,
+                G = stereo_mixer_t(C, method=method, listener_pos=lp, plane=plane,
                                     device=device, dtype=dtype)                 # [C,2]
                 if energy_comp and C > 0:
                     G = G / math.sqrt(C)                                       # stabilize loudness
