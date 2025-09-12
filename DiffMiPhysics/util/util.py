@@ -22,7 +22,7 @@ def event_dict_seconds_to_samples(event_dict, sample_rate=16000):
     # Convert event_dict keys from seconds to samples (int)
     new_dict = {}
     for k, v in event_dict.items():
-        k_samples = max(0, int(k * sample_rate))
+        k_samples = max(0, int(float(k) * sample_rate))
         new_dict[k_samples] = v
     return new_dict
 
