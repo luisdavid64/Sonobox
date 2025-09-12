@@ -598,12 +598,6 @@ if __name__ == "__main__":
     sf.write("mass_spring.wav", audio.detach().cpu().numpy(), 16000)
     sd.play(audio.detach().cpu().numpy(), 16000); sd.wait()
 
-    loss = torch.mean(audio**2)
-    print("Audio loss:", loss.item())
-    loss.backward()
-
-    # Example: inspect gradients exist
-    def mean_abs(x): return float(x.detach().abs().mean().cpu())
-    # print("grad|K|   :", model.theta_k.grad)
-    # print("grad|Z|:", model.theta_z.grad)
-    # print("grad|fric|:", model.theta_fric.grad)
+    # loss = torch.mean(audio**2)
+    # print("Audio loss:", loss.item())
+    # loss.backward()
