@@ -477,11 +477,6 @@ class MassSpringModel(nn.Module):
         self.hp_x_prev = torch.zeros(0, device=self.nodes.device, dtype=self.nodes.dtype)
         self.hp_y_prev = torch.zeros(0, device=self.nodes.device, dtype=self.nodes.dtype)
         self.hp_primed = False
-        with torch.no_grad():
-            self.inv_mass.data.clamp_min_(1e-8)
-            self.k.data.clamp_min_(1e-8)
-            self.z.data.clamp_min_(1e-8)
-            self.fric.data.clamp_(1e-6, 2)
 
 
 if __name__ == "__main__":
