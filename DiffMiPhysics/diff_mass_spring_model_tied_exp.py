@@ -397,7 +397,8 @@ class MassSpringModel(nn.Module):
                      pan_method: str = "by_position",
                      hp: bool = True,
                      gain: float | None = None,
-                     events: dict = {}
+                     events: dict = {},
+                     mix_audio: bool = True
                      ) -> torch.Tensor:
         """
         End-to-end: simulate at current dt for `seconds`, capture listeners,
@@ -423,23 +424,23 @@ class MassSpringModel(nn.Module):
             # raw = _dc_block_t(raw)
             raw = self.highpass_observer3d(raw, R=0.95, prime_on_first_call=True)
 
-        audio_mc = raw
+        audio = raw
 
         # mix to target layout
-        audio = mix_down(   
-            model,   
-            audio_mc,
-            layout=layout,             # mono is cheaper for CLAP; stereo if you need it
-            method=pan_method,
-            listener_ids=listener_ids,
-            normalize=False,
-            soft_clip=False,
-            energy_comp=True
-        )
+        if mix_audio:
+            audio = mix_down(   
+                self,   
+                audio,
+                layout=layout,             # mono is cheaper for CLAP; stereo if you need it
+                method=pan_method,
+                listener_ids=listener_ids,
+                normalize=False,
+                soft_clip=False,
+                energy_comp=True
+            )
 
         # final gain & clamp
         audio = audio * gain
-        audio = audio.squeeze()
         peak = torch.maximum(torch.abs(audio).amax(), torch.tensor(1e-9, device=audio.device)).detach()
         audio = audio / peak
 
