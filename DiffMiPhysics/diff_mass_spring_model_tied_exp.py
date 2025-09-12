@@ -3,6 +3,7 @@ import os
 import torch
 from torch import nn
 from typing import Optional
+from util.util import event_dict_seconds_to_samples
 from util.topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
 from util.viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram
 from util.audio_helpers import axis_pick_t, mix_down
@@ -485,10 +486,11 @@ if __name__ == "__main__":
     seconds = 1.0
 
     events = {
-        8000: (3, 3, 3),
-        12000: (3, 3, 5),
+        0.5: (3, 3, 3),
+        0.75: (3, 3, 5),
         # more events...
     }
+    events = event_dict_seconds_to_samples(events, fs)
     audio = model.render_audio(
         seconds=seconds,
         fs=fs,
