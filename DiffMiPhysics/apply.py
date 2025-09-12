@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Union, List, Optional, Tuple
-from diff_mass_spring_model_tied_exp import MassSpringModel
+from diff_mass_spring_model import MassSpringModel
 import torch
 
 from audiotools import AudioSignal
@@ -100,13 +100,14 @@ if __name__ == "__main__":
     parser.add_argument("--model_config_path", default="../model_configs/sonobox_data/baselines/biosonix_3D.json", type=str, help="Path to the model config file.")
     # parser.add_argument("--text_target", type=str, default='wooden mallet, marimba-like', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='church bell, long ring', help="Text description to match.")
-    parser.add_argument("--text_target", type=str, default='anvil hit, clangy', help="Text description to match.")
+    # parser.add_argument("--text_target", type=str, default='anvil hit, clangy', help="Text description to match.")
+    parser.add_argument("--text_target", type=str, default='kick drum', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='dry percussive thud', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='glassy with long sustain', help="Text description to match.")
     parser.add_argument("--export_dir", type=str, default="exp", help="Dir Path to save optimized audio file.")
-    parser.add_argument("--learning_rate", type=float, default=0.1, help="Learning rate for optimization.")
+    parser.add_argument("--learning_rate", type=float, default=0.5, help="Learning rate for optimization.")
     parser.add_argument("--params_init_type", type=str, default='random', choices=['random', 'default'], help="Parameter initialization type.")
-    parser.add_argument("--n_iters", type=int, default=600, help="Number of optimization iterations.")
+    parser.add_argument("--n_iters", type=int, default=100, help="Number of optimization iterations.")
     parser.add_argument("--criterion", type=str, default='cosine-sim', help="Optimization criterion.")
     parser.add_argument("--model", type=str, default='ms_clap', help="Model name.")
     parser.add_argument("--detailed_log", action="store_true", help="Enable detailed logging every 100 iterations.")

@@ -1,7 +1,7 @@
 from pathlib import Path
 from tqdm import tqdm
 
-from diff_mass_spring_model_tied_exp import MassSpringModel
+from diff_mass_spring_model import MassSpringModel
 import torch
 import numpy as np
 from audiotools import AudioSignal
@@ -189,7 +189,13 @@ def text2mi(
         with open(log_file, "a") as log:
             # Get parameters with names
             log.write(f"Beginning Parameters:\n") 
-            log.write(f"K: {mass_spring_model.k.detach().item()}\n")
+            # Check if k is a vector, with size not equal to 1
+            if mass_spring_model.k.dim() > 0 and mass_spring_model.k.size(0) != 1:
+                log.write(f"K: {mass_spring_model.k.detach().cpu().numpy()}\n")
+            else:
+                log.write(f"K1: {mass_spring_model.k_1.detach().item()}\n")
+                log.write(f"K2: {mass_spring_model.k_2.detach().item()}\n")
+
             log.write(f"Z: {mass_spring_model.z.detach().item()}\n")
             log.write(f"Friction: {mass_spring_model.fric.detach().item()}\n")
 
@@ -201,12 +207,13 @@ def text2mi(
         # Code for signal rolling
 
         mass_spring_model.detach_state(reset_to_rest=True)
-        # print(f"Param values iter {n}:")
-        # print("K:",    (mass_spring_model.k * torch.exp(mass_spring_model.theta_k)).detach().item())
-        # print("Z:",    (mass_spring_model.z * torch.exp(mass_spring_model.theta_z)).detach().item())
-        # print("fric:", (mass_spring_model.fric * torch.exp(mass_spring_model.theta_fric)).detach().item())
         print(f"Param values iter {n}:")
-        print("K:",    (mass_spring_model.k).detach().item())
+        # Separate K1 and K2 printing
+        if mass_spring_model.k.shape[0] != mass_spring_model.springs.shape[0]:
+            print("K:",    (mass_spring_model.k).detach().item())
+        else:
+            print("K1:",   (mass_spring_model.k_1).detach().item())
+            print("K2:",   (mass_spring_model.k_2).detach().item())
         print("Z:",    (mass_spring_model.z).detach().item())
         print("fric:", (mass_spring_model.fric).detach().item())
         signal_mi = mass_spring_model.render_audio(
@@ -244,7 +251,11 @@ def text2mi(
             with open(log_file, "a") as log:
                 params = torch.cat([p.view(-1) for p in mass_spring_model.parameters() if p.requires_grad])
                 log.write(f"Iteration {n} Parameters:\n") 
-                log.write(f"K: {mass_spring_model.k.detach().item()}\n")
+                if mass_spring_model.k.shape[0] != mass_spring_model.springs.shape[0]:
+                    log.write(f"K: {mass_spring_model.k.detach().cpu().numpy()}\n")
+                else:
+                    log.write(f"K1: {mass_spring_model.k_1.detach().item()}\n")
+                    log.write(f"K2: {mass_spring_model.k_2.detach().item()}\n")
                 log.write(f"Z: {mass_spring_model.z.detach().item()}\n")
                 log.write(f"Friction: {mass_spring_model.fric.detach().item()}\n")
                 log.write(f"Loss: {loss.item()}\n")
