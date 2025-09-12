@@ -3,9 +3,9 @@ import os
 import torch
 from torch import nn
 from typing import Optional
-from topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
-from viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram
-from audio_helpers import axis_pick_t, mix_down
+from util.topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
+from util.viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram
+from util.audio_helpers import axis_pick_t, mix_down
 import json
 
 class MassSpringModel(nn.Module):

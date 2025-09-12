@@ -299,7 +299,7 @@ def text2mi(
         with open(log_file, "a") as log:
             log.write(f"ENDING Params Values: {params.data.cpu().numpy()}\n")
     
-    # min_loss_index = int(np.argmin(final_losses)) # used for comparing across multiple runs
+    min_loss_index = int(np.argmin(final_losses)) # used for comparing across multiple runs
 
     # Play final signal with optimized effects parameters
     # out_sig = channel(clean_sig.clone().to(device), torch.sigmoid(params)).clone().detach().cpu()
