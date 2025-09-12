@@ -10,7 +10,9 @@ def event_dict_to_tensor(event_dict, device=None, sample_rate=16000):
     total_steps = int(max_step * sample_rate)
     forces = torch.zeros((total_steps, 3), device=device)
     for step, force in event_dict.items():
-        step_idx = max(0,int(step * sample_rate) - 1)
+        step_idx = max(0,int(step * sample_rate))
+        if step_idx == total_steps:
+            step_idx = total_steps - 1
         forces[step_idx] += torch.tensor(force, device=device)
     return forces
 
@@ -18,8 +20,16 @@ def event_dict_seconds_to_samples(event_dict, sample_rate=16000):
     # Convert event_dict keys from seconds to samples (int)
     new_dict = {}
     for k, v in event_dict.items():
-        k_samples = max(0, int(k * sample_rate) - 1)
+        k_samples = max(0, int(k * sample_rate))
         new_dict[k_samples] = v
+    return new_dict
+
+def event_dict_samples_to_seconds(event_dict, sample_rate=16000):
+    # Convert event_dict keys from samples (int) to seconds (float)
+    new_dict = {}
+    for k, v in event_dict.items():
+        k_seconds = k / sample_rate
+        new_dict[k_seconds] = v
     return new_dict
 
 if __name__ == "__main__":
@@ -29,3 +39,5 @@ if __name__ == "__main__":
     print(event_tensor)
     sample_events = event_dict_seconds_to_samples(raw_events, sample_rate=16000)
     print(sample_events)
+    seconds_events = event_dict_samples_to_seconds(sample_events, sample_rate=16000)
+    print(seconds_events)
