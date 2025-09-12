@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+import json
+import os
 
 def event_dict_to_tensor(event_dict, device=None, sample_rate=16000):
     # Conver event_dict to tensor of rows of forces N,3
@@ -31,6 +33,17 @@ def event_dict_samples_to_seconds(event_dict, sample_rate=16000):
         k_seconds = k / sample_rate
         new_dict[k_seconds] = v
     return new_dict
+
+def save_event_to_json(event_dict, path):
+    with open(path, "w") as f:
+        json.dump(event_dict, f, indent=4)
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    
+def load_event_from_json(path):
+    with open(path, "r") as f:
+        return json.load(f)
 
 if __name__ == "__main__":
     # Example usage
