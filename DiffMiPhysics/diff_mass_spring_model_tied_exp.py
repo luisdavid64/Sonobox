@@ -416,13 +416,10 @@ class MassSpringModel(nn.Module):
                 ids = torch.tensor([self.N // 2], device=device, dtype=torch.long)
             listener_ids = ids
 
-        # how many sim steps?
         steps = int(round(seconds / float(self.dt)))
         raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis, events=events)  # [T_sim,C]
 
-        # (optional) DC-block at sim rate before resampling (helps big drifts for positions)
         if hp:
-            # raw = _dc_block_t(raw)
             raw = self.highpass_observer3d(raw, R=0.95, prime_on_first_call=True)
 
         audio = raw
