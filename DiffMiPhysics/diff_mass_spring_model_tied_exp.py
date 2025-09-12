@@ -5,7 +5,7 @@ from torch import nn
 from typing import Optional
 from topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
 from viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram
-from audio_helpers import axis_pick_t, stereo_mixer_t
+from audio_helpers import axis_pick_t, stereo_mixer_t, mix_down
 import json
 
 class MassSpringModel(nn.Module):
@@ -387,81 +387,6 @@ class MassSpringModel(nn.Module):
 
         return out  # [steps, C]
 
-    def resample_to_audio(self,
-                          sig_sim: torch.Tensor,   # [T_sim, C] at dt_sim=self.dt
-                          fs: int = 44100) -> torch.Tensor:
-        """
-        Linear resample from sim timebase (dt=self.dt) to audio (fs).
-        Returns [T_audio, C]. Pure Torch (differentiable).
-        """
-        device = sig_sim.device
-        T_sim, C = sig_sim.shape
-        dt = float(self.dt)
-        dur = dt * (T_sim - 1)
-        T_audio = int(round(dur * fs)) + 1
-
-        # time grids
-        t_sim = torch.linspace(0.0, dur, T_sim, device=device)
-        t_out = torch.linspace(0.0, dur, T_audio, device=device)
-
-        # compute fractional indices into sim grid
-        idx_float = t_out / dt
-        i0 = torch.clamp(idx_float.floor().long(), 0, T_sim - 2)   # [T_audio]
-        w = (idx_float - i0.float()).unsqueeze(-1)                 # [T_audio,1]
-
-        y0 = sig_sim[i0, :]                                        # [T_audio, C]
-        y1 = sig_sim[i0 + 1, :]
-        y  = (1.0 - w) * y0 + w * y1                               # [T_audio, C]
-        return y
-
-    def mix_down(
-        self,
-        multich: torch.Tensor,            # [T, C]
-        layout: str = "stereo",           # 'mono' | 'stereo'
-        method: str = "by_position",
-        listener_ids: torch.Tensor | None = None,
-        plane: tuple[int,int] = (0,2),
-        normalize: bool = False,          # keep False during training
-        target_peak: float = 0.99,
-        soft_clip: bool = False,          # keep False during training
-        clip_drive: float = 2.0,
-        energy_comp: bool = True,         # divide by sqrt(C) to stabilize loudness
-    ) -> torch.Tensor:
-        """
-        Mix C listeners to mono/stereo (Torch). Returns [T, K].
-        Designed to be training-friendly (purely linear by default).
-        """
-        device, dtype = multich.device, multich.dtype
-        T, C = multich.shape
-
-        if layout == "mono":
-            y = multich.mean(dim=1, keepdim=True)                  # [T,1]
-        elif layout == "stereo":
-            if listener_ids is None:
-                raise ValueError("listener_ids required for stereo mixing when method='by_position'")
-            # cache G if listeners are static
-            if not hasattr(self, "_G_cache") or self._G_cache is None \
-            or self._G_cache.shape[0] != C:
-                lp = self.rest_pos[listener_ids.to(device, dtype=torch.long)]  # [C,3]
-                G = stereo_mixer_t(C, method=method, listener_pos=lp, plane=plane,
-                                    device=device, dtype=dtype)                 # [C,2]
-                if energy_comp and C > 0:
-                    G = G / math.sqrt(C)                                       # stabilize loudness
-                self._G_cache = G                                              # cache on module
-            G = self._G_cache.to(device=device, dtype=dtype)
-            y = multich @ G                                                    # [T,2]
-        else:
-            raise ValueError("layout must be 'mono' or 'stereo'.")
-
-        # Optional post-faders (disable for training)
-        if normalize:
-            peak = torch.maximum(torch.abs(y).amax(dim=0, keepdim=True), torch.tensor(1e-9, device=device, dtype=dtype))
-            y = y * (target_peak / peak)
-        if soft_clip:
-            y = torch.tanh(y * clip_drive) / torch.tanh(torch.as_tensor(clip_drive, device=device, dtype=dtype))
-
-        return y
-
     def render_audio(self,
                      seconds: float,
                      fs: int = 16000,
@@ -498,20 +423,19 @@ class MassSpringModel(nn.Module):
             # raw = _dc_block_t(raw)
             raw = self.highpass_observer3d(raw, R=0.95, prime_on_first_call=True)
 
-
-        # resample to audio
-        # audio_mc = self.resample_to_audio(raw, fs=fs)  # [T_audio, C]
         audio_mc = raw
 
         # mix to target layout
-        # audio = self.mix_down(audio_mc, layout=layout, method=pan_method, listener_ids=listener_ids)
-        audio = self.mix_down(audio_mc,
-                            layout=layout,             # mono is cheaper for CLAP; stereo if you need it
-                            method=pan_method,
-                            listener_ids=listener_ids,
-                            normalize=False,
-                            soft_clip=False,
-                            energy_comp=True) # For stereo, energy_comp helps keep loudness stable
+        audio = mix_down(   
+            model,   
+            audio_mc,
+            layout=layout,             # mono is cheaper for CLAP; stereo if you need it
+            method=pan_method,
+            listener_ids=listener_ids,
+            normalize=False,
+            soft_clip=False,
+            energy_comp=True
+        )
 
         # final gain & clamp
         audio = audio * gain
