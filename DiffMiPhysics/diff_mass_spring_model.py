@@ -7,6 +7,7 @@ from util.audio_helpers import axis_pick_t, mix_down, normalize_rms_to_dbfs
 from util.util import event_dict_seconds_to_samples, load_event_from_json, save_event_to_json
 from util.config_utils import load_config, save_config, model_to_config
 import json
+from exciters import *
 
 class MassSpringModel(nn.Module):
     """
@@ -329,7 +330,8 @@ class MassSpringModel(nn.Module):
                            listener_ids: torch.Tensor,
                            observable: str = "pos",   # 'pos' | 'vel' | 'acc' | 'force'
                            axis: str = "all",
-                           events: dict = {}
+                           events: dict = {},
+                           exciter = None
                            ) -> torch.Tensor:
         """
         Run `steps` physics ticks and return raw multichannel listener signal at sim rate.
@@ -339,10 +341,12 @@ class MassSpringModel(nn.Module):
         ids = listener_ids.to(device, dtype=torch.long)
         C = ids.numel()
         out = torch.zeros(steps, C, device=device, dtype=self.m_pos.dtype)
-
         for t in range(steps):
             if t in events:
                 self.apply_force_on_drivers(events[t])
+            # if exciter is not None:
+            #     f_exciter = exciter.step(t)
+            #     self.apply_force_on_drivers(f_exciter)
             self.compute()
 
             # absolute pos
@@ -371,6 +375,7 @@ class MassSpringModel(nn.Module):
                      hp: bool = True,
                      gain: float | None = None,
                      events: dict = {},
+                     exciter = None,
                      mix_audio: bool = True,
                      ) -> torch.Tensor:
         """
@@ -389,7 +394,7 @@ class MassSpringModel(nn.Module):
             listener_ids = ids
 
         steps = int(round(seconds / float(self.dt)))
-        raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis, events=events)  # [T_sim,C]
+        raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis, events=events, exciter=exciter)  # [T_sim,C]
 
         if hp:
             raw = self.highpass_observer3d(raw, R=0.95, prime_on_first_call=True)
@@ -463,9 +468,10 @@ if __name__ == "__main__":
 
     # Render 1s of audio and backprop a simple power loss
     seconds = 1.0
-    events = load_event_from_json("events/bow.json")
+    events = load_event_from_json("events/two_hits.json")
     events = event_dict_seconds_to_samples(events, fs)
     
+    exciter = HitExciter() 
     
     audio = model.render_audio(
         seconds=seconds,
@@ -476,7 +482,8 @@ if __name__ == "__main__":
         layout='mono',
         pan_method='by_position',
         hp=True,
-        events=events
+        events=events,
+        exciter=None,
     )  # [T_audio, 1]
     
     import soundfile as sf, sounddevice as sd
