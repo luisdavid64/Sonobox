@@ -199,3 +199,141 @@ def plot_spectrogram(audio, fs):
     plt.title('Spectrogram')
     plt.savefig('mass_spring_spectrogram.png')
     plt.close()
+
+
+import math, numpy as np
+import taichi as ti
+
+def _center_radius(P):
+    c = P.mean(0)
+    r = np.max(np.linalg.norm(P - c, axis=1)) + 1e-6
+    return c, r
+
+
+def run_interactive_mi(
+    model,
+    fps: int = 60,
+    sim_rate: int = 16000,       # your physics step rate (1/dt)
+    force_gain: float = 3.0,     # N per axis when key held
+    line_width: float = 3.0,
+    node_radius: float = 0.8,
+    bg=(0.02, 0.02, 0.03),
+    win_size=(1280, 800),
+):
+    # ti.init(arch=ti.gpu if ti.cuda.is_available() else ti.cpu)
+
+    # --- caches / geometry ---
+    device = model.nodes.device
+    N = model.N
+    i_idx = model.edge_index[0].detach().cpu().numpy()
+    j_idx = model.edge_index[1].detach().cpu().numpy()
+    E = i_idx.shape[0]
+    pos0 = model.m_pos.detach().float().cpu().numpy()
+    center, radius = _center_radius(pos0)
+
+    # taichi fields
+    particles = ti.Vector.field(3, dtype=ti.f32, shape=N)
+    drivers = model.get_driver_ids()
+    drivers_np = drivers.detach().cpu().numpy() if drivers is not None else np.zeros(0, dtype=np.int32)
+    driver_field = ti.field(dtype=ti.i32, shape=drivers_np.shape[0])
+    if drivers_np.size:
+        driver_field.from_numpy(drivers_np)
+
+    # window / scene / camera
+    window = ti.ui.Window("Mass–Spring 3D (interactive)", win_size)
+    canvas = window.get_canvas()
+    scene = ti.ui.Scene()
+    cam = ti.ui.Camera()
+    fov = 45.0
+    cam_dist = radius / math.tan(math.radians(fov) * 0.5) * 1.3
+    cam.position(center[0], center[1], center[2] - cam_dist)
+    cam.lookat(center[0], center[1], center[2])
+    cam.up(0, 1, 0)
+    cam.fov(fov)
+
+    # sim stepping
+    steps_per_frame_exact = sim_rate / fps
+    step_accum = 0.0
+    paused = False
+    gain = float(force_gain)
+
+    help_txt = "[1-9] strike driver n  |  [w/d]=gain  |  [SPACE]=pause  |  [R]=reset  |  [ESC]=quit"
+
+    model.eval()  # physics stepping doesn't need grads
+    # (Optional) start from rest each run
+    model.detach_state(reset_to_rest=True)
+
+    while window.running:
+        # camera user control (hold RMB to orbit)
+        cam.track_user_inputs(window, movement_speed=0.1, hold_key=ti.ui.RMB)
+        scene.set_camera(cam)
+        scene.ambient_light((0.85, 0.85, 0.9))
+        canvas.set_background_color(bg)
+
+        # --- input ---
+        if window.is_pressed(ti.ui.ESCAPE):
+            break
+        if window.is_pressed(ti.ui.SPACE):
+            paused = not paused
+        if window.is_pressed('r') or window.is_pressed('R'):
+            # reset to rest; also clears m_frc
+            if hasattr(model, "detach_state"):
+                with torch.no_grad():
+                    model.detach_state(reset_to_rest=True)
+
+
+        # gain controls
+        if window.is_pressed('w'):
+            gain *= 1.05
+        if window.is_pressed('d'):
+            gain /= 1.05
+            gain = max(1e-3, gain)
+
+        # check if pressed numeric
+    
+
+        # --- simulate substeps ---
+        step_accum += steps_per_frame_exact
+        steps = int(step_accum)
+        step_accum -= steps
+        if steps < 1:
+            steps = 1  # keep sim moving even if fps fluctuates
+
+        if not paused:
+            for _ in range(steps):
+                model.compute()
+
+        # --- render ---
+        # copy current positions
+        P = model.m_pos.detach().float().cpu().numpy()
+        particles.from_numpy(P)
+
+        # nodes
+        scene.particles(particles, radius=node_radius, color=(1.0, 0.35, 0.35))
+
+        # highlight driver nodes (green, larger)
+        if drivers_np.size:
+            # make a tiny field of just drivers for drawing
+            # (taichi requires a dense field; we do a quick gather)
+            drv_pos = ti.Vector.field(3, dtype=ti.f32, shape=drivers_np.shape[0])
+            drv_pos.from_numpy(P[drivers_np])
+            scene.particles(drv_pos, radius=node_radius*1.8, color=(0.3, 1.0, 0.4))
+
+        # springs (as lines)
+        verts = np.empty((2*E, 3), dtype=np.float32)
+        verts[0::2] = P[i_idx]
+        verts[1::2] = P[j_idx]
+        verts_field = ti.Vector.field(3, dtype=ti.f32, shape=verts.shape[0])
+        verts_field.from_numpy(verts)
+        scene.lines(verts_field, color=(0.35, 0.45, 1.0), width=line_width)
+
+        canvas.scene(scene)
+
+        # HUD
+        window.GUI.begin("controls", 0.02, 0.02, 0.36, 0.22)
+        window.GUI.text(help_txt)
+        window.GUI.text(f"gain: {gain:6.3f}   steps/frame: {steps}")
+        window.GUI.text(f"paused: {paused}")
+        window.GUI.end()
+
+        window.show()
