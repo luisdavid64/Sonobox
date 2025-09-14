@@ -412,10 +412,11 @@ class MassSpringModel(nn.Module):
         ) # For stereo, energy_comp helps keep loudness stable
 
         # final gain & clamp
-        if not self.training:
-            audio = audio * gain
-            peak = torch.maximum(torch.abs(audio).amax(), torch.tensor(1e-9, device=audio.device))
-            audio = audio / peak
+        # if not self.training:
+        #     audio = audio * gain
+        #     peak = torch.maximum(torch.abs(audio).amax(), torch.tensor(1e-9, device=audio.device))
+        #     audio = audio / peak
+        audio = normalize_rms_to_dbfs(audio)
 
         return audio  # [T_audio, K]
 
@@ -456,7 +457,7 @@ if __name__ == "__main__":
 
     # Render 1s of audio and backprop a simple power loss
     seconds = 1.0
-    events = load_event_from_json("events/two_hits.json")
+    events = load_event_from_json("events/bow.json")
     events = event_dict_seconds_to_samples(events, fs)
     
     
