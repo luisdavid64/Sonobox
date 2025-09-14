@@ -1,6 +1,7 @@
 from pathlib import Path
 from tqdm import tqdm
 
+from util.util import event_dict_seconds_to_samples, load_event_from_json
 from diff_mass_spring_model import MassSpringModel
 import torch
 import numpy as np
@@ -14,7 +15,6 @@ import json
 
 from core import create_save_dir, detensor_dict
 from constants import RUNS_DIR, SAMPLE_RATE, DEVICE
-torch.autograd.set_detect_anomaly(True)
 
 alpha = 0.5               # stability margin
 dt = 1/16000               # your physics step
@@ -131,13 +131,15 @@ def text2mi(
 
     optimizer = torch.optim.Adam(mass_spring_model.parameters(), lr=lr)     # the optimizer!
 
-    events = {
-        8000: (3, 3, 3),
-        12000: (3, 3, 5),
-        # more events...
-    }
+    # events = {
+    #     8000: (3, 3, 3),
+    #     12000: (3, 3, 5),
+    #     # more events...
+    # }
     fs = 16000
     seconds = 1 
+    events = load_event_from_json("events/bow.json")
+    events = event_dict_seconds_to_samples(events, fs)
     init_sig = mass_spring_model.render_audio(
         seconds=seconds,
         fs=fs,
@@ -216,6 +218,8 @@ def text2mi(
             print("K2:",   (mass_spring_model.k_2).detach().item())
         print("Z:",    (mass_spring_model.z).detach().item())
         print("fric:", (mass_spring_model.fric).detach().item())
+        # print("Anomaly enabled?", torch.is_anomaly_enabled())  # should print True
+
         signal_mi = mass_spring_model.render_audio(
             seconds=seconds,
             fs=fs,

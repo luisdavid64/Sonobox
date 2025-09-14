@@ -3,7 +3,7 @@ from torch import nn
 from typing import Optional
 from util.topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
 from util.viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram
-from util.audio_helpers import axis_pick_t, mix_down
+from util.audio_helpers import axis_pick_t, mix_down, normalize_rms_to_dbfs
 from util.util import event_dict_seconds_to_samples, load_event_from_json, save_event_to_json
 from util.config_utils import load_config, save_config, model_to_config
 import json
@@ -412,9 +412,10 @@ class MassSpringModel(nn.Module):
         ) # For stereo, energy_comp helps keep loudness stable
 
         # final gain & clamp
-        audio = audio * gain
-        peak = torch.maximum(torch.abs(audio).amax(), torch.tensor(1e-9, device=audio.device)).detach()
-        audio = audio / peak
+        if not self.training:
+            audio = audio * gain
+            peak = torch.maximum(torch.abs(audio).amax(), torch.tensor(1e-9, device=audio.device))
+            audio = audio / peak
 
         return audio  # [T_audio, K]
 

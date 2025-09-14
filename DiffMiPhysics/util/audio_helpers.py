@@ -131,3 +131,30 @@ def mix_down(
         y = torch.tanh(y * clip_drive) / torch.tanh(torch.as_tensor(clip_drive, device=device, dtype=dtype))
 
     return y
+
+def normalize_rms_to_dbfs(x: torch.Tensor,
+                          target_db: float = -20.0,
+                          eps: float = 1e-6,
+                          gain_max_db: float = 40.0):
+    """
+    x: [T, C] audio tensor
+    target_db: desired RMS in dBFS (0 dBFS = full scale = 1.0)
+    eps: floor on power to avoid divide-by-zero
+    gain_max_db: optional safety cap on boost
+    """
+    # constant linear target RMS (no signal logs)
+    target_rms = (10.0 ** (target_db / 20.0))  # scalar float
+
+    # current RMS per channel (no logs; use rsqrt for stability)
+    power = (x.float().pow(2).mean(dim=0, keepdim=True)).clamp_min(eps)  # [1,C]
+    inv_rms = torch.rsqrt(power)                                         # 1/sqrt
+
+    # gain to hit target RMS, with an optional cap
+    gain = target_rms * inv_rms                                          # [1,C]
+    gain_cap = 10.0 ** (gain_max_db / 20.0)
+    gain = gain.clamp(max=gain_cap)
+
+    y = x * gain
+    # optional gentle safety limiter to catch rare overs without NANs
+    # y = torch.tanh(y)
+    return y

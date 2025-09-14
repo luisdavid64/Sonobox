@@ -68,7 +68,7 @@ print(example1)
 # 2) “bow” style continuous excitation for 1.8 s sampled every 1/240 s
 # (you can feed this straight to your simulator loop)
 vBow = Envelope([(0.0, 0.10), (0.30, 0.30), (0.80, 0.10), (1.80, 0.00)])  # tangential speed → map to force if needed
-fNorm = Envelope([(0.00, 0.0), (0.02, 2.0), (0.10, 1.6), (1.70, 1.6), (1.80, 0.0)])  # pressure
+fNorm = Envelope([(0.00, 0.0), (0.02, 0.5), (0.10, 0.3), (1.70, 0.3), (1.80, 0.0)])  # pressure
 
 # simplest mapping: use envelopes directly as forces on axes (replace with your bow model if you have one)
 bow_events = sample_event_dict(

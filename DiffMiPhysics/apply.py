@@ -9,7 +9,6 @@ import core as tc
 from text2mi_main import text2mi
 from constants import SAMPLE_RATE, DEVICE
 
-
 """
 Example Call:
 python -m text2mi.apply assets/multistem_examples/10s/bass.wav eq 'warm like a hug' \
@@ -40,6 +39,7 @@ def main(model_config_path: Union[str, Path],
          detailed_log:bool = False) -> Tuple[AudioSignal, torch.Tensor, dict]:
 
     # Preprocess full audio from path, return AudioSignal
+    print("DEVICE:", DEVICE)
     print('text2mi on mass_spring_model')
 
     # Create mass_spring_model 
@@ -102,7 +102,11 @@ if __name__ == "__main__":
     # parser.add_argument("--text_target", type=str, default='church bell, long ring', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='anvil hit, clangy', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='kick drum', help="Text description to match.")
-    parser.add_argument("--text_target", type=str, default='djembe, african sharp percussion', help="Text description to match.")
+    # parser.add_argument("--text_target", type=str, default='djembe, african sharp percussion', help="Text description to match.")
+    # parser.add_argument("--text_target", type=str, default='bowing string instrument, violin', help="Text description to match.")
+    # parser.add_argument("--text_target", type=str, default='brass like trumpet', help="Text description to match.")
+    parser.add_argument("--text_target", type=str, default='playing a flute, high quality', help="Text description to match.")
+    # parser.add_argument("--text_target", type=str, default='a bowed string, violin', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='glassy with long sustain', help="Text description to match.")
     parser.add_argument("--export_dir", type=str, default="exp", help="Dir Path to save optimized audio file.")
     parser.add_argument("--learning_rate", type=float, default=0.5, help="Learning rate for optimization.")
