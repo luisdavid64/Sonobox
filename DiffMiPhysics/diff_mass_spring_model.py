@@ -419,6 +419,12 @@ class MassSpringModel(nn.Module):
         audio = normalize_rms_to_dbfs(audio)
 
         return audio  # [T_audio, K]
+    
+    def postprocess_audio(self, audio, apply_gain=False):
+        audio = normalize_rms_to_dbfs(audio)
+        if self.gain:
+            audio = audio * self.gain
+        return audio
 
     @torch.no_grad()
     def detach_state(self, reset_to_rest=True):

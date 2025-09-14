@@ -105,7 +105,7 @@ if __name__ == "__main__":
     # parser.add_argument("--text_target", type=str, default='djembe, african sharp percussion', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='bowing string instrument, violin', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='brass like trumpet', help="Text description to match.")
-    parser.add_argument("--text_target", type=str, default='playing a flute, high quality', help="Text description to match.")
+    parser.add_argument("--text_target", type=str, default='piccolo flute, high pitch passage', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='a bowed string, violin', help="Text description to match.")
     # parser.add_argument("--text_target", type=str, default='glassy with long sustain', help="Text description to match.")
     parser.add_argument("--export_dir", type=str, default="exp", help="Dir Path to save optimized audio file.")

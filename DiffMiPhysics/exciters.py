@@ -94,3 +94,61 @@ class BowExciter(nn.Module):
         F_scalar = G * torch.tanh(Pm_t - Z * v_par)
         F_vec = F_scalar * d                                 # (3,)
         return i, F_vec
+
+class BlowExciter(nn.Module):
+    def __init__(self, dt, node_ids, d_hat=(1,0,0), B=8):
+        super().__init__()
+        self.dt = dt
+        self.node_ids = torch.as_tensor(node_ids, dtype=torch.long)
+        self.d_hat = nn.Parameter(torch.tensor(d_hat, dtype=torch.float32))
+        # simple RBF envelope for mouth pressure
+        self.T = None  # set at runtime if you want full vector
+        centers = torch.linspace(0, 1, B)
+        widths  = torch.full((B,), 0.12)
+        self.register_buffer("centers", centers)
+        self.register_buffer("widths", widths)
+        self.theta_P = nn.Parameter(torch.zeros(B))        # Pm coeffs
+        self.theta_Z = nn.Parameter(torch.tensor(0.2))     # >0
+        self.theta_G = nn.Parameter(torch.tensor(2.0))     # >0
+
+    def _env(self, t_norm):
+        # t_norm in [0,1]
+        phi = torch.exp(-0.5*((t_norm[:,None]-self.centers[None,:])/
+                              (self.widths[None,:]+1e-6))**2)  # [T,B]
+        w = self.theta_P                                    # signed
+        return (phi @ w).squeeze(-1)                        # [T]
+
+    def forward(self, t_idx, pos, vel, T_total):
+        # time-normalized envelope value
+        t_norm = torch.linspace(0, 1, T_total, device=pos.device, dtype=pos.dtype)
+        Pm_t = self._env(t_norm)[t_idx]                      # scalar
+        Z = torch.nn.functional.softplus(self.theta_Z) + 1e-6
+        G = torch.nn.functional.softplus(self.theta_G)
+        d = self.d_hat / (self.d_hat.norm()+1e-9)
+
+        # project node velocity along d and average across driver nodes
+        i = self.node_ids.to(pos.device)
+        v_par = vel[i].mean(0).dot(d)                        # scalar
+        F_scalar = G * torch.tanh(Pm_t - Z * v_par)
+        F_vec = F_scalar * d                                 # (3,)
+        return i, F_vec
+
+
+class ExciterBank(nn.Module):
+    def __init__(self, exciters):
+        super().__init__()
+        self.exciters = nn.ModuleList(exciters)
+        self.alpha = nn.Parameter(torch.zeros(len(exciters)))  # logits
+        self.tau = 1.0   # temperature (anneal to ~0.1)
+    def weights(self, hard=False):
+        if self.training:
+            return torch.nn.functional.gumbel_softmax(self.alpha, tau=self.tau, hard=False)
+        w = torch.softmax(self.alpha, dim=0)
+        return w
+    def step_forces(self, t_idx, pos, vel):
+        w = self.weights()
+        F_total = torch.zeros_like(pos)  # [N,3]
+        for k, exc in enumerate(self.exciters):
+            node_ids, f_vec = exc(t_idx, pos, vel)   # node_ids: [M], f_vec: (3,)
+            F_total.index_add_(0, node_ids, w[k] * f_vec.unsqueeze(0).expand(node_ids.numel(), -1))
+        return F_total, w
