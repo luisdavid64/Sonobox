@@ -137,7 +137,7 @@ def text2mi(
     #     # more events...
     # }
     fs = 16000
-    seconds = 1 
+    seconds = 2 
     events = load_event_from_json("events/two_hits.json")
     events = event_dict_seconds_to_samples(events, fs)
     init_sig = mass_spring_model.render_audio(
