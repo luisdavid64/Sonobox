@@ -138,10 +138,10 @@ def text2mi(
     #     # more events...
     # }
     fs = 16000
-    seconds = 2 
+    seconds = 1 
     events = load_event_from_json("events/bow_2.json")
     events = event_dict_seconds_to_samples(events, fs)
-    events = scale_dict_samples(events, 0.1)  # scale forces down a bit
+    # events = scale_dict_samples(events, 0.1)  # scale forces down a bit
     init_sig = mass_spring_model.render_audio(
         seconds=seconds,
         fs=fs,
@@ -233,7 +233,6 @@ def text2mi(
             hp=True,
             events=events
         )  # [T_audio, 1]
-        # signal_sim = AudioSignal(signal_mi, sample_rate=fs)
         signal_sim = clap_preprocess(signal_mi, fs_in=fs)
         signal_sim = AudioSignal(signal_sim, sample_rate=44100)
 

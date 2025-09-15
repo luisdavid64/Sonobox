@@ -423,9 +423,9 @@ class MassSpringModel(nn.Module):
         # if not self.training:
         audio = audio * gain
         audio = audio.squeeze()
-
         peak = torch.maximum(torch.abs(audio).amax(), torch.tensor(1e-9, device=audio.device)).detach()
         audio = audio / peak
+        audio = audio.squeeze()
         # audio = normalize_rms_to_dbfs(audio)
 
         return audio  # [T_audio, K]
@@ -468,7 +468,7 @@ if __name__ == "__main__":
         device=device, dt=1/fs
     )
     model.train()  # enable grads
-    model.run_interactive()
+    # model.run_interactive()
 
     # visualize = False
 
@@ -477,29 +477,29 @@ if __name__ == "__main__":
     #     # render_traj_taichi3d(traj.detach().cpu().numpy(), model.edge_index.cpu().numpy())
 
     # # Render 1s of audio and backprop a simple power loss
-    # seconds = 1.0
-    # events = load_event_from_json("events/two_hits.json")
-    # events = event_dict_seconds_to_samples(events, fs)
+    seconds = 1.0
+    events = load_event_from_json("events/two_hits.json")
+    events = event_dict_seconds_to_samples(events, fs)
     
-    # exciter = HitExciter() 
+    exciter = HitExciter() 
     
-    # audio = model.render_audio(
-    #     seconds=seconds,
-    #     fs=fs,
-    #     observable='pos',
-    #     axis='all',
-    #     listener_ids=model.get_listener_ids(),
-    #     layout='mono',
-    #     pan_method='by_position',
-    #     hp=True,
-    #     events=events,
-    #     exciter=None,
-    # )  # [T_audio, 1]
+    audio = model.render_audio(
+        seconds=seconds,
+        fs=fs,
+        observable='pos',
+        axis='all',
+        listener_ids=model.get_listener_ids(),
+        layout='mono',
+        pan_method='by_position',
+        hp=True,
+        events=events,
+        exciter=None,
+    )  # [T_audio, 1]
     
-    # import soundfile as sf, sounddevice as sd
-    # sf.write("mass_spring.wav", audio.detach().cpu().numpy(), fs)
-    # sd.play(audio.detach().cpu().numpy(), fs); sd.wait()
+    import soundfile as sf, sounddevice as sd
+    sf.write("mass_spring.wav", audio.detach().cpu().numpy(), fs)
+    sd.play(audio.detach().cpu().numpy(), fs); sd.wait()
 
-    # loss = torch.mean(audio**2)
-    # print("Audio loss:", loss.item())
-    # loss.backward()
+    loss = torch.mean(audio**2)
+    print("Audio loss:", loss.item())
+    loss.backward()
