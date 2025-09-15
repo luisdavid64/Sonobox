@@ -1,5 +1,6 @@
 import math
 import torch
+import torchaudio.transforms as T
 
 def axis_pick_t(x3: torch.Tensor, axis: str) -> torch.Tensor:
     # x3: [..., 3] -> [...], axis in {'x','y','z','all'}
@@ -158,3 +159,38 @@ def normalize_rms_to_dbfs(x: torch.Tensor,
     # optional gentle safety limiter to catch rare overs without NANs
     # y = torch.tanh(y)
     return y
+
+import torch
+import torch.nn.functional as F
+from audiotools import AudioSignal
+
+def resample(signal, sr, resample=True, clap_sr=44100):
+    audio_time_series = signal
+    resample_rate = clap_sr
+    sample_rate = sr
+
+    if resample and resample_rate != sample_rate:
+        resampler = T.Resample(sample_rate, resample_rate)
+        resampler.to(signal.device)
+        audio_time_series = resampler(audio_time_series)
+        signal = audio_time_series
+
+    return signal
+
+def clap_preprocess(segment, fs_in, clap_sr=44100, clap_dur_s=7.0, center=True, noise_db=None):
+    y = resample(segment, fs_in, resample=True, clap_sr=clap_sr)
+    Tt = int(round(clap_sr * clap_dur_s))
+    if y.shape[0] >= Tt:
+        start = (y.shape[0]-Tt)//2
+        y = y[start:start+Tt]
+    else:
+        pad = Tt - y.shape[0]
+        pre = pad//2 if center else 0
+        post = pad - pre
+        y = F.pad(y, (pre, post))
+        if noise_db is not None:
+            # optional very low pink/white noise floor, e.g. noise_db=-60
+            amp = 10**(noise_db/20)
+            y = y + amp * torch.randn_like(y)
+
+    return y.unsqueeze(0).unsqueeze(0)  # [B=1, C=1, T] for CLAP

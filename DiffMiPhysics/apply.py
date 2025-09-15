@@ -8,6 +8,7 @@ from audiotools import AudioSignal
 import core as tc
 from text2mi_main import text2mi
 from constants import SAMPLE_RATE, DEVICE
+torch.autograd.detect_anomaly(check_nan=True)
 
 """
 Example Call:
@@ -98,7 +99,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process an audio file with a given FX chain to match a description.")
 
     parser.add_argument("--model_config_path", default="../model_configs/sonobox_data/baselines/biosonix_3D.json", type=str, help="Path to the model config file.")
-    parser.add_argument("--text_target", type=str, default='distorted electrical guitar', help="Text description to match.")
+    parser.add_argument("--text_target", type=str, default='A violin is being played', help="Text description to match.")
     parser.add_argument("--export_dir", type=str, default="exp", help="Dir Path to save optimized audio file.")
     parser.add_argument("--learning_rate", type=float, default=0.5, help="Learning rate for optimization.")
     parser.add_argument("--params_init_type", type=str, default='random', choices=['random', 'default'], help="Parameter initialization type.")

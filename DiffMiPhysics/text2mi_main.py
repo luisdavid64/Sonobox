@@ -1,7 +1,8 @@
 from pathlib import Path
 from tqdm import tqdm
 
-from util.util import event_dict_seconds_to_samples, load_event_from_json
+from util.audio_helpers import clap_preprocess
+from util.util import event_dict_seconds_to_samples, load_event_from_json, scale_dict_samples
 from diff_mass_spring_model import MassSpringModel
 import torch
 import numpy as np
@@ -137,9 +138,10 @@ def text2mi(
     #     # more events...
     # }
     fs = 16000
-    seconds = 1 
-    events = load_event_from_json("events/two_hits.json")
+    seconds = 2 
+    events = load_event_from_json("events/bow_2.json")
     events = event_dict_seconds_to_samples(events, fs)
+    events = scale_dict_samples(events, 0.1)  # scale forces down a bit
     init_sig = mass_spring_model.render_audio(
         seconds=seconds,
         fs=fs,
@@ -231,7 +233,9 @@ def text2mi(
             hp=True,
             events=events
         )  # [T_audio, 1]
-        signal_sim = AudioSignal(signal_mi, sample_rate=fs)
+        # signal_sim = AudioSignal(signal_mi, sample_rate=fs)
+        signal_sim = clap_preprocess(signal_mi, fs_in=fs)
+        signal_sim = AudioSignal(signal_sim, sample_rate=44100)
 
         # Get CLAP embedding for effected audio
         embedding_sim = clap.get_audio_embeddings(signal_sim) #.get_audio_embeddings takes in preprocessed audio

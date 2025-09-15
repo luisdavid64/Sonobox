@@ -45,6 +45,12 @@ def load_event_from_json(path):
     with open(path, "r") as f:
         return json.load(f)
 
+def scale_dict_samples(event_dict, scale):
+    new_dict = {}
+    for k, v in event_dict.items():
+        new_dict[k] = [vi * scale for vi in v]
+    return new_dict
+
 if __name__ == "__main__":
     # Example usage
     raw_events = {0.0: (1, 0, 0), 0.5: (0, 1, 0), 1.0: (0, 0, 1)}
