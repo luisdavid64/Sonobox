@@ -27,5 +27,14 @@ EXAMPLE_PROMPTS = [
     "glassy with long sustain",
     "church bell, long ring",
     "music box, tinkly highs",
-    "anvil hit, clangy"
+    "anvil hit, clangy",
+    "violin playing paganini",
+    "brass like trumpet",
+    "a bowed string, violin",
+    "emotional piano playing",
+    "djembe, african sharp percussion",
+    "kick drum",
+    "deep bass, subby",
+    "distorted electric guitar",
+    "futuristic synth, sharp attack",
 ]
