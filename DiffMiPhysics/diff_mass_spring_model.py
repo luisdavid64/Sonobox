@@ -491,10 +491,10 @@ if __name__ == "__main__":
         hp=True,
         events=events,
         exciter=None,
-        mix_audio=False
+        mix_audio=True
     )  # [T_audio, 1]
 
-    audio = audio.squeeze()[0]
+    audio = audio.squeeze()
     
     import soundfile as sf, sounddevice as sd
     sf.write("mass_spring.wav", audio.detach().cpu().numpy(), fs)
