@@ -421,11 +421,11 @@ class MassSpringModel(nn.Module):
 
         # final gain & clamp
         # if not self.training:
-        audio = audio * gain
+        # audio = audio * gain
         audio = audio.transpose(1,0)
-        # peak = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
-        # audio = audio / peak.unsqueeze(-1)
-        audio = rms_normalize(audio, target_rms=1)
+        peak = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
+        audio = audio / peak.unsqueeze(-1)
+        # audio = rms_normalize(audio, target_rms=0.1)
         return audio  # [T_audio, K]
     
     def postprocess_audio(self, audio, apply_gain=False):

@@ -195,7 +195,7 @@ def clap_preprocess(segment, fs_in, clap_sr=44100, clap_dur_s=7.0, center=True, 
             amp = 10**(noise_db/20)
             y = y + amp * torch.randn_like(y)
 
-    return y.unsqueeze(0).unsqueeze(0)  # [B=1, C=1, T] for CLAP
+    return y  # [B=1, C=1, T] for CLAP
 
 def rms_normalize(x: torch.Tensor, target_rms: float = 0.1, eps: float = 1e-8) -> torch.Tensor:
     """
