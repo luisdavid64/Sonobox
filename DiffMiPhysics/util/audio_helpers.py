@@ -1,6 +1,7 @@
 import math
 import torch
 import torchaudio.transforms as T
+import torchaudio
 
 def axis_pick_t(x3: torch.Tensor, axis: str) -> torch.Tensor:
     # x3: [..., 3] -> [...], axis in {'x','y','z','all'}
@@ -195,3 +196,23 @@ def clap_preprocess(segment, fs_in, clap_sr=44100, clap_dur_s=7.0, center=True, 
             y = y + amp * torch.randn_like(y)
 
     return y.unsqueeze(0).unsqueeze(0)  # [B=1, C=1, T] for CLAP
+
+def rms_normalize(x: torch.Tensor, target_rms: float = 0.1, eps: float = 1e-8) -> torch.Tensor:
+    """
+    RMS normalize a multi-channel audio signal.
+
+    Args:
+        x: Tensor of shape (K, T) where K = channels, T = time.
+        target_rms: Desired RMS level after normalization.
+        eps: Small constant to avoid division by zero.
+
+    Returns:
+        Tensor of shape (K, T), RMS normalized.
+    """
+    # Compute RMS over time per channel
+    rms = torch.sqrt(torch.mean(x**2, dim=-1, keepdim=True) + eps)
+
+    # Scale so each channel has the target RMS
+    x_norm = x * (target_rms / rms)
+
+    return x_norm
