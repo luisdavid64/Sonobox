@@ -58,8 +58,9 @@ def stereo_mixer_t(
             az = torch.linspace(-torch.pi/2, torch.pi/2, C, device=device, dtype=dtype)
     return _equal_power_gains_from_angles_t(az)                 # [C,2]
 
-def resample_to_audio(self,
-                        sig_sim: torch.Tensor,   # [T_sim, C] at dt_sim=self.dt
+def resample_to_audio(
+                        sig_sim: torch.Tensor,  # [T_sim, C]
+                        dt: float, 
                         fs: int = 44100) -> torch.Tensor:
     """
     Linear resample from sim timebase (dt=self.dt) to audio (fs).
@@ -67,7 +68,7 @@ def resample_to_audio(self,
     """
     device = sig_sim.device
     T_sim, C = sig_sim.shape
-    dt = float(self.dt)
+    dt = float(dt)
     dur = dt * (T_sim - 1)
     T_audio = int(round(dur * fs)) + 1
 
