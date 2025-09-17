@@ -103,6 +103,8 @@ class MassSpringModel(nn.Module):
         self.register_buffer("hp_y_prev", torch.zeros(0))
         self.hp_primed = False  # if False, we will prime on first call
 
+        self.compute = self.compute_explicit_euler
+
     @property
     def k_1(self): return torch.exp(self._logk_first)
     @property
@@ -168,7 +170,18 @@ class MassSpringModel(nn.Module):
         self.m_prevDist = m_dist.clone()
         return F
 
-    def compute(self):
+    def compute_semi_implicit(self):
+        invM = self.inv_mass.view(-1,1)
+        v = self.m_pos - self.m_posR
+        a = (self.m_frc * invM) - self.gravity
+        v_new = v * (1.0 - self.fric.view(-1,1)) + a
+        x_new = self.m_pos + v_new
+        self.m_posR = self.m_pos
+        self.m_pos  = (1-self.fixed_mask)*x_new + self.fixed_mask*self.rest_pos
+        Fspr = self.spring_damper_forces()
+        self.m_frc = Fspr * (1.0 - self.fixed_mask)
+
+    def compute_explicit_euler(self):
         # --- 1) integrate with previous forces ---
         invM  = self.inv_mass.view(-1, 1)                      # [N,1]
 
@@ -428,7 +441,6 @@ class MassSpringModel(nn.Module):
         audio = audio.transpose(1,0)
         peak = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
         audio = audio / peak.unsqueeze(-1)
-        # audio = rms_normalize(audio, target_rms=0.1)
         return audio  # [T_audio, K]
     
     def postprocess_audio(self, audio, apply_gain=False):
@@ -503,6 +515,6 @@ if __name__ == "__main__":
     sf.write("mass_spring.wav", audio.detach().cpu().numpy(), fs)
     sd.play(audio.detach().cpu().numpy(), fs); sd.wait()
 
-    loss = torch.mean(audio**2)
-    print("Audio loss:", loss.item())
-    loss.backward()
+    # loss = torch.mean(audio**2)
+    # print("Audio loss:", loss.item())
+    # loss.backward()
