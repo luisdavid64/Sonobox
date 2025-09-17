@@ -334,7 +334,8 @@ class MassSpringModel(nn.Module):
                            observable: str = "pos",   # 'pos' | 'vel' | 'acc' | 'force'
                            axis: str = "all",
                            events: dict = {},
-                           exciter = None
+                           exciter = None,
+                           start_frame=0
                            ) -> torch.Tensor:
         """
         Run `steps` physics ticks and return raw multichannel listener signal at sim rate.
@@ -345,8 +346,9 @@ class MassSpringModel(nn.Module):
         C = ids.numel()
         out = torch.zeros(steps, C, device=device, dtype=self.m_pos.dtype)
         for t in range(steps):
-            if t in events:
-                self.apply_force_on_drivers(events[t])
+            t_real = t + start_frame
+            if t_real in events:
+                self.apply_force_on_drivers(events[t_real])
             # if exciter is not None:
             #     f_exciter = exciter.step(t)
             #     self.apply_force_on_drivers(f_exciter)
@@ -380,6 +382,7 @@ class MassSpringModel(nn.Module):
                      events: dict = {},
                      exciter = None,
                      mix_audio: bool = True,
+                     start_frame=0
                      ) -> torch.Tensor:
         """
         End-to-end: simulate at current dt for `seconds`, capture listeners,
@@ -397,7 +400,7 @@ class MassSpringModel(nn.Module):
             listener_ids = ids
 
         steps = int(round(seconds / float(self.dt)))
-        raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis, events=events, exciter=exciter)  # [T_sim,C]
+        raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis, events=events, exciter=exciter, start_frame=start_frame)  # [T_sim,C]
 
         if hp:
             raw = self.highpass_observer3d(raw, R=0.95, prime_on_first_call=True)
@@ -416,7 +419,7 @@ class MassSpringModel(nn.Module):
                 listener_ids=listener_ids,
                 normalize=False,
                 soft_clip=False,
-                energy_comp=True
+                energy_comp=True,
         ) # For stereo, energy_comp helps keep loudness stable
 
         # final gain & clamp
