@@ -47,8 +47,9 @@ class MassSpringModel(nn.Module):
         # ----- per-mass parameters -----
         mass_from_nodes = nodes[:, 3].clamp_min(1e-12)
         self.register_buffer("mass", mass_from_nodes.clone())
-        inv_mass_init = 1.0 / mass_from_nodes  # per miPhysics
-        self.inv_mass = nn.Parameter(inv_mass_init.clone(), requires_grad=False)
+        inv_mass_init = 1.0 / mass_from_nodes[0]  # per miPhysics
+        # self.inv_mass = nn.Parameter(inv_mass_init.clone(), requires_grad=False)
+        self.log_inv_mass = nn.Parameter(torch.log(inv_mass_init.clone()), requires_grad=True)
         
         self.radius    = nn.Parameter(nodes[:, 4].clone(), requires_grad=False)
 
@@ -118,6 +119,8 @@ class MassSpringModel(nn.Module):
     def z(self):    return torch.exp(self._logz)
     @property
     def fric(self): return torch.exp(self._u_fric)   # keep c in [0,2]
+    @property
+    def inv_mass(self): return torch.exp(self.log_inv_mass)   # keep c in [0,2]
 
     # ---------------- miPhysics-like API ----------------
 
@@ -412,7 +415,7 @@ class MassSpringModel(nn.Module):
                 ids = torch.tensor([self.N // 2], device=device, dtype=torch.long)
             listener_ids = ids
 
-        steps = int(round(seconds / float(self.dt)))
+        steps = int(round(seconds * fs))
         raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis, events=events, exciter=exciter, start_frame=start_frame)  # [T_sim,C]
 
         if hp:
