@@ -130,7 +130,7 @@ def text2mi(
             log.write(f"Params Initialization Type: {params_init_type}\n")
             log.write("="*40 + "\n")
 
-    optimizer = torch.optim.Adam(mass_spring_model.parameters(), lr=lr)     # the optimizer!
+    optimizer = torch.optim.AdamW(mass_spring_model.parameters(), lr=lr)     # the optimizer!
 
     # events = {
     #     8000: (3, 3, 3),
@@ -139,7 +139,7 @@ def text2mi(
     # }
     fs = 16000
     seconds = 1 
-    events = load_event_from_json("events/bow_2.json")
+    events = load_event_from_json("events/two_hits.json")
     events = event_dict_seconds_to_samples(events, fs)
     # events = scale_dict_samples(events, 0.1)  # scale forces down a bit
     init_sig = mass_spring_model.render_audio(
@@ -153,6 +153,7 @@ def text2mi(
         hp=True,
         events=events
     )  # [T_audio, 1]    
+    init_sig = init_sig.squeeze()
     
     # Logging
     if writer:
@@ -233,6 +234,7 @@ def text2mi(
             hp=True,
             events=events
         )  # [T_audio, 1]
+        signal_mi = signal_mi.squeeze()  # [T_audio,]
         signal_sim = clap_preprocess(signal_mi, fs_in=fs)
         signal_sim = AudioSignal(signal_sim, sample_rate=44100)
 
