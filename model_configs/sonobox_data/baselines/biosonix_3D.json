@@ -1,0 +1,29 @@
+{
+  "data_dir": "data/BioSonix/abstract-model/target-and-sensitive/1/only-target-in-big/data",
+  "use_norm_data": false,
+  "model": "3D",
+  "global_friction": 0.0025,
+  "bounds": ["CORNERS"],
+  "geometry": {
+    "numLayers": 3,
+    "numNodesPerLayer" : [3,13,11],
+    "distance": 10.0,
+    "massesRadius": 3.0,
+    "dy": 26, 
+    "dx": 3,
+    "dz": 3,
+    "interactionType": "SECOND"
+  },
+  "parameters": {
+      "K": [0.05, 1.4, 5.0],
+      "M": [10.0, 96.15, 96.15],
+      "C": [0.0003,1,0.5]
+  },
+  "sonification_set_up": {
+    "acoustic_scaling_factor": 3,
+    "contributing_pixels": ["3", "5","7", "10", "11","12", "14","18", "22"],
+    "stiffnessArray": [0,0,0,1,1,1,2,2,2],
+      "drivers": ["m_1_3_1","m_1_5_1","m_1_7_1","m_1_10_1","m_1_11_1","m_1_12_1", "m_1_14_1", "m_1_18_1","m_1_22_1"],
+      "listeners": ["m_1_4_1","m_1_6_1","m_1_9_1","m_1_13_1", "m_1_16_1", "m_1_20_1"]
+    }
+}
