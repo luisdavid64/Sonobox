@@ -105,6 +105,7 @@ class MassSpringModel(nn.Module):
         self.hp_primed = False  # if False, we will prime on first call
 
         self.compute = self.compute_explicit_euler
+        self.hp_filter = self.simple_highpass
 
     @property
     def k_1(self): return torch.exp(self._logk_first)
@@ -310,6 +311,12 @@ class MassSpringModel(nn.Module):
                 self.hp_y_prev = torch.zeros(C, device=device, dtype=dtype)
                 self.hp_primed = False
 
+   # Highpass with no recursion: faster, but not loyal to miphysics sound
+    def simple_highpass(self, x: torch.Tensor) -> torch.Tensor:
+        y = torch.zeros_like(x)
+        y[1:] = x[1:] - x[:-1]
+        return y
+
     def highpass_observer3d(self, x: torch.Tensor, R: float | None = None,
                             prime_on_first_call: bool = True) -> torch.Tensor:
         """
@@ -419,7 +426,8 @@ class MassSpringModel(nn.Module):
         raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis, events=events, exciter=exciter, start_frame=start_frame)  # [T_sim,C]
 
         if hp:
-            raw = self.highpass_observer3d(raw, R=0.95, prime_on_first_call=True)
+            # raw = self.highpass_observer3d(raw, R=0.95, prime_on_first_call=True)
+            raw = self.hp_filter(raw)
 
 
         # resample to audio
