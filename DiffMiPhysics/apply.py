@@ -8,7 +8,6 @@ from audiotools import AudioSignal
 import core as tc
 from text2mi_main import text2mi
 from constants import SAMPLE_RATE, DEVICE
-torch.autograd.detect_anomaly(check_nan=True)
 
 """
 Example Call:
