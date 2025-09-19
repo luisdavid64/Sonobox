@@ -98,7 +98,6 @@ def text2mi(
 ):
 
     clap = get_model(model_name)
-    clap.to(device)
 
     if log_tensorboard or export_audio or detailed_log:
         if not save_dir:
