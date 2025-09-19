@@ -98,6 +98,7 @@ def text2mi(
 ):
 
     clap = get_model(model_name)
+    clap.to(device)
 
     if log_tensorboard or export_audio or detailed_log:
         if not save_dir:
@@ -203,6 +204,7 @@ def text2mi(
 
             log.write(f"Z: {mass_spring_model.z.detach().item()}\n")
             log.write(f"Friction: {mass_spring_model.fric.detach().item()}\n")
+            log.write(f"Mass: {1/mass_spring_model.inv_mass.detach().item()}\n")
 
 
     # Single-Instance Optimization: Optimize our parameters by matching effected audio against the target text embedding
@@ -221,6 +223,7 @@ def text2mi(
             print("K2:",   (mass_spring_model.k_2).detach().item())
         print("Z:",    (mass_spring_model.z).detach().item())
         print("fric:", (mass_spring_model.fric).detach().item())
+        print("Mass:",  (1/mass_spring_model.inv_mass).detach().item())
         # print("Anomaly enabled?", torch.is_anomaly_enabled())  # should print True
 
         signal_mi = mass_spring_model.render_audio(
@@ -267,6 +270,7 @@ def text2mi(
                     log.write(f"K2: {mass_spring_model.k_2.detach().item()}\n")
                 log.write(f"Z: {mass_spring_model.z.detach().item()}\n")
                 log.write(f"Friction: {mass_spring_model.fric.detach().item()}\n")
+                log.write(f"Mass: {1/mass_spring_model.inv_mass.detach().item()}\n")
                 log.write(f"Loss: {loss.item()}\n")
 
 
