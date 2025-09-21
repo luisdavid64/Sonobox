@@ -51,6 +51,14 @@ def scale_dict_samples(event_dict, scale):
         new_dict[k] = [vi * scale for vi in v]
     return new_dict
 
+def rescale_time_dict_samples(event_dict, scale):
+    new_dict = {}
+    for k, v in event_dict.items():
+        new_k = int(k * scale)
+        new_dict[new_k] = v
+    return new_dict
+
+
 if __name__ == "__main__":
     # Example usage
     raw_events = {0.0: (1, 0, 0), 0.5: (0, 1, 0), 1.0: (0, 0, 1)}
