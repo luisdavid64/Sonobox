@@ -2,7 +2,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from util.audio_helpers import clap_preprocess
-from util.util import event_dict_seconds_to_samples, load_event_from_json, scale_dict_samples
+from util.util import event_dict_seconds_to_samples, load_event_from_json, rescale_time_dict_samples, scale_dict_samples
 from diff_mass_spring_model import MassSpringModel
 import torch
 import numpy as np
@@ -95,6 +95,8 @@ def text2mi(
     detailed_log: bool = False,
     export_audio: bool = False,
     log_tensorboard: bool = False,
+    fs: int = 16000,
+    sim_rate: int = 16000
 ):
 
     clap = get_model(model_name)
@@ -137,11 +139,11 @@ def text2mi(
     #     12000: (3, 3, 5),
     #     # more events...
     # }
-    fs = 16000
     seconds = 1 
     events = load_event_from_json("events/two_hits.json")
     events = event_dict_seconds_to_samples(events, fs)
-    # events = scale_dict_samples(events, 0.1)  # scale forces down a bit
+    events = rescale_time_dict_samples(events, sim_rate/fs)
+
     init_sig = mass_spring_model.render_audio(
         seconds=seconds,
         fs=fs,
@@ -160,7 +162,7 @@ def text2mi(
         writer.add_audio("effected", init_sig, 0, sample_rate=fs)
     # sig_in.clone().cpu().write(save_dir / 'input.wav')
     if export_audio: #starting audio
-        sf.write(save_dir / f'starting.wav', init_sig.detach().cpu().numpy(), 16000)
+        sf.write(save_dir / f'starting.wav', init_sig.detach().cpu().numpy(), sim_rate)
 
     # Preparing our text target
     sig = AudioSignal(init_sig, sample_rate=fs)
@@ -286,7 +288,7 @@ def text2mi(
 
         if n % log_audio_every_n == 0:
             # Save audio
-            sf.write(save_dir / f'optim_{n}.wav', signal_mi.detach().cpu().numpy(), 16000)
+            sf.write(save_dir / f'optim_{n}.wav', signal_mi.detach().cpu().numpy(), sim_rate)
 
         # detailed logging, log params + signal every 100 iters
         if detailed_log:

@@ -44,9 +44,10 @@ def main(model_config_path: Union[str, Path],
 
     # Create mass_spring_model 
     fs = 16000
+    sim_rate = 16000
     mass_spring_model = MassSpringModel.from_json(
         model_config_path,
-        device=DEVICE, dt=1/fs
+        device=DEVICE, dt=fs/sim_rate
     ).to(DEVICE)
     mass_spring_model.train()  # enable grads
     print(f'2. created mass_spring_model from {model_config_path}')
@@ -74,7 +75,9 @@ def main(model_config_path: Union[str, Path],
         lr=learning_rate,
         n_iters=n_iters,
         detailed_log=detailed_log,
-        export_audio=True
+        export_audio=True,
+        fs=fs,
+        sim_rate=sim_rate,
     )
 
     if export_dir:
