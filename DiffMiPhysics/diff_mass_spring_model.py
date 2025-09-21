@@ -104,7 +104,7 @@ class MassSpringModel(nn.Module):
         self.register_buffer("hp_y_prev", torch.zeros(0))
         self.hp_primed = False  # if False, we will prime on first call
 
-        self.compute = self.compute_implicit_euler
+        self.compute = self.compute_explicit_euler
         self.hp_filter = self.simple_highpass
 
     @property
@@ -174,54 +174,14 @@ class MassSpringModel(nn.Module):
         self.m_prevDist = m_dist.clone()
         return F
 
-    def compute_implicit_euler(self, iters=1):
-        """
-        Same form as your explicit step, but evaluate forces at x_{t+1}.
-        Uses simple fixed-point (Picard) iterations:
-            x_new = rhs + invM_dt2 * F(x_new)
-        """
-        # --- 0) precompute the same scaled terms you use in explicit ---
-        invM_dt2 = self.inv_mass.view(-1, 1) * (self.dt * self.dt)   # [N,1]
-        c        = invM_dt2 * self.fric.view(-1, 1)                  # [N,1]
-        gterm    = self.gravity.view(1, 3)                           # [1,3]
-
-        x, xr = self.m_pos, self.m_posR
-        fixed = self.fixed_mask
-        rest  = self.rest_pos
-
-        # Right-hand side from your explicit stencil (all known)
-        rhs = x * (2.0 - c) - xr * (1.0 - c) - gterm                 # [N,3]
-
-        # --- 1) explicit predictor as initial guess (good warm start) ---
-        x_new = rhs + invM_dt2 * self.m_frc
-        x_new = (1.0 - fixed) * x_new + fixed * rest
-
-        # --- 2) Picard: evaluate forces at the current guess and update ---
-        for _ in range(iters):
-            # temporarily evaluate forces at x_new
-            old_pos = self.m_pos
-            self.m_pos = x_new
-            Fspr = self.spring_damper_forces()                       # [N,3] at x_new
-            self.m_pos = old_pos
-
-            # no forces on fixed nodes
-            Fspr = Fspr * (1.0 - fixed)
-
-            # implicit update
-            x_new = rhs + invM_dt2 * Fspr
-
-            # clamp fixed nodes to rest each iteration (Dirichlet)
-            x_new = (1.0 - fixed) * x_new + fixed * rest
-
-        # --- 3) roll states like your explicit and rebuild forces for next step ---
-        self.m_posR = x
-        self.m_pos  = x_new
-
-        # enforce fixed nodes (kept for symmetry with your explicit path)
-        self.m_pos  = (1.0 - fixed) * self.m_pos  + fixed * rest
-        self.m_posR = (1.0 - fixed) * self.m_posR + fixed * rest
-
-        # forces for next step, at the converged x_{t+1}
+    def compute_semi_implicit(self):
+        invM = self.inv_mass.view(-1,1)
+        v = self.m_pos - self.m_posR
+        a = (self.m_frc * invM) - self.gravity
+        v_new = v * (1.0 - self.fric.view(-1,1)) + a
+        x_new = self.m_pos + v_new
+        self.m_posR = self.m_pos
+        self.m_pos  = (1-self.fixed_mask)*x_new + self.fixed_mask*self.rest_pos
         Fspr = self.spring_damper_forces()
         self.m_frc = Fspr * (1.0 - fixed)
 
