@@ -4,7 +4,7 @@ from typing import Optional
 from util.topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
 from util.viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram, run_interactive_mi
 from util.audio_helpers import axis_pick_t, mix_down, normalize_rms_to_dbfs, rms_normalize
-from util.util import event_dict_seconds_to_samples, load_event_from_json, save_event_to_json
+from util.util import event_dict_seconds_to_samples, load_event_from_json, rescale_time_dict_samples, save_event_to_json
 from util.config_utils import load_config, save_config, model_to_config
 import json
 from exciters import *
@@ -104,7 +104,7 @@ class MassSpringModel(nn.Module):
         self.register_buffer("hp_y_prev", torch.zeros(0))
         self.hp_primed = False  # if False, we will prime on first call
 
-        self.compute = self.compute_explicit_euler
+        self.compute = self.compute_implicit_euler
         self.hp_filter = self.simple_highpass
 
     @property
@@ -151,7 +151,7 @@ class MassSpringModel(nn.Module):
         Uses k_first for first neighbors, k_second for second neighbors.
         """
         k = self.k
-        z = self.z
+        z = self.z / self.dt
         i, j = self.edge_index[0], self.edge_index[1]          # [E]
         d    = self.m_pos[j] - self.m_pos[i]                   # [E,3]
         m_dist = (d.pow(2).sum(-1) + 1e-12).sqrt()             # [E]
@@ -174,20 +174,63 @@ class MassSpringModel(nn.Module):
         self.m_prevDist = m_dist.clone()
         return F
 
-    def compute_semi_implicit(self):
-        invM = self.inv_mass.view(-1,1)
-        v = self.m_pos - self.m_posR
-        a = (self.m_frc * invM) - self.gravity
-        v_new = v * (1.0 - self.fric.view(-1,1)) + a
-        x_new = self.m_pos + v_new
-        self.m_posR = self.m_pos
-        self.m_pos  = (1-self.fixed_mask)*x_new + self.fixed_mask*self.rest_pos
+    def compute_implicit_euler(self, iters=1):
+        """
+        Same form as your explicit step, but evaluate forces at x_{t+1}.
+        Uses simple fixed-point (Picard) iterations:
+            x_new = rhs + invM_dt2 * F(x_new)
+        """
+        # --- 0) precompute the same scaled terms you use in explicit ---
+        invM_dt2 = self.inv_mass.view(-1, 1) * (self.dt * self.dt)   # [N,1]
+        c        = invM_dt2 * self.fric.view(-1, 1)                  # [N,1]
+        gterm    = self.gravity.view(1, 3)                           # [1,3]
+
+        x, xr = self.m_pos, self.m_posR
+        fixed = self.fixed_mask
+        rest  = self.rest_pos
+
+        # Right-hand side from your explicit stencil (all known)
+        rhs = x * (2.0 - c) - xr * (1.0 - c) - gterm                 # [N,3]
+
+        # --- 1) explicit predictor as initial guess (good warm start) ---
+        x_new = rhs + invM_dt2 * self.m_frc
+        x_new = (1.0 - fixed) * x_new + fixed * rest
+
+        # --- 2) Picard: evaluate forces at the current guess and update ---
+        for _ in range(iters):
+            # temporarily evaluate forces at x_new
+            old_pos = self.m_pos
+            self.m_pos = x_new
+            Fspr = self.spring_damper_forces()                       # [N,3] at x_new
+            self.m_pos = old_pos
+
+            # no forces on fixed nodes
+            Fspr = Fspr * (1.0 - fixed)
+
+            # implicit update
+            x_new = rhs + invM_dt2 * Fspr
+
+            # clamp fixed nodes to rest each iteration (Dirichlet)
+            x_new = (1.0 - fixed) * x_new + fixed * rest
+
+        # --- 3) roll states like your explicit and rebuild forces for next step ---
+        self.m_posR = x
+        self.m_pos  = x_new
+
+        # enforce fixed nodes (kept for symmetry with your explicit path)
+        self.m_pos  = (1.0 - fixed) * self.m_pos  + fixed * rest
+        self.m_posR = (1.0 - fixed) * self.m_posR + fixed * rest
+
+        # forces for next step, at the converged x_{t+1}
         Fspr = self.spring_damper_forces()
-        self.m_frc = Fspr * (1.0 - self.fixed_mask)
+        self.m_frc = Fspr * (1.0 - fixed)
+
+        return self.m_pos
+
 
     def compute_explicit_euler(self):
         # --- 1) integrate with previous forces ---
-        invM  = self.inv_mass.view(-1, 1)                      # [N,1]
+        invM  = self.inv_mass.view(-1, 1) * (self.dt*self.dt)                      # [N,1]
 
         fric = self.fric
         c     = (invM * fric.view(-1,1))                       # [N,1]
@@ -422,7 +465,7 @@ class MassSpringModel(nn.Module):
                 ids = torch.tensor([self.N // 2], device=device, dtype=torch.long)
             listener_ids = ids
 
-        steps = int(round(seconds * fs))
+        steps = int(round(seconds * (fs / self.dt)))
         raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis, events=events, exciter=exciter, start_frame=start_frame)  # [T_sim,C]
 
         if hp:
@@ -485,11 +528,12 @@ class MassSpringModel(nn.Module):
 
 if __name__ == "__main__":
     fs = 16000
+    sim_rate = 4000
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = MassSpringModel.from_json(
         "../model_configs/sonobox_data/baselines/biosonix_3D.json",
-        device=device, dt=1/fs
+        device=device, dt=fs/sim_rate
     )
     model.train()  # enable grads
     # model.run_interactive()
@@ -504,6 +548,8 @@ if __name__ == "__main__":
     seconds = 1.0
     events = load_event_from_json("events/two_hits.json")
     events = event_dict_seconds_to_samples(events, fs)
+    events = rescale_time_dict_samples(events, sim_rate/fs)
+    print("Events (at sim rate):", events)
     
     
     audio = model.render_audio(
@@ -523,8 +569,8 @@ if __name__ == "__main__":
     audio = audio.squeeze()
     
     import soundfile as sf, sounddevice as sd
-    sf.write("mass_spring.wav", audio.detach().cpu().numpy(), fs)
-    sd.play(audio.detach().cpu().numpy(), fs); sd.wait()
+    sf.write("mass_spring.wav", audio.detach().cpu().numpy(), sim_rate)
+    sd.play(audio.detach().cpu().numpy(), sim_rate); sd.wait()
 
     # loss = torch.mean(audio**2)
     # print("Audio loss:", loss.item())
