@@ -664,8 +664,6 @@ class MassSpringModel(nn.Module):
             audio_out[t:t+cur] = audio_seg
             t += cur
 
-        # Optionally do HPF (can be outside checkpoint; it’s cheap and stateless)
-        audio_out = self.hp_filter(audio_out)
         return audio_out  # [T_sim, C]
 
 
