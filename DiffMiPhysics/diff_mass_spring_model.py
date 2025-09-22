@@ -1,3 +1,4 @@
+import time
 import torch
 from torch import nn
 from typing import Optional
@@ -8,6 +9,111 @@ from util.util import event_dict_seconds_to_samples, load_event_from_json, resca
 from util.config_utils import load_config, save_config, model_to_config
 import json
 from exciters import *
+from torch.utils.checkpoint import checkpoint
+
+def step_explicit_euler_fn(
+    x, xr, prev_dist, frc, fixed_mask, rest_pos, edge_index, rest,
+    inv_mass, fric, gravity, k_all, z_all, dt
+):
+    # --- spring forces at current x ---
+    i, j = edge_index[0], edge_index[1]                 # [E]
+    d    = x[j] - x[i]                                  # [E,3]
+    dist = (d.pow(2).sum(-1) + 1e-12).sqrt()           # [E]
+    invL = torch.where(dist > 1e-9, 1.0 / dist, dist.new_zeros(()))
+    dirv = d* invL.unsqueeze(-1)                       # [E,3]
+
+    # Hooke + dashpot (dashpot on distance change)
+    # NOTE: z is relative; miPhysics had z/dt. Keep your convention.
+    f_el   = - k_all * (dist - rest)                    # [E]
+    f_damp = - (z_all / dt) * (dist - prev_dist)        # [E]
+    linkF  = (f_el + f_damp).unsqueeze(-1) * dirv       # [E,3]
+
+    # scatter to nodes
+    F = torch.zeros_like(x)
+    F.index_add_(0, i, -linkF)
+    F.index_add_(0, j,  linkF)
+
+    # add external accumulated force buffer (drivers), then clear for next tick
+    F = F + frc
+    frc_next = torch.zeros_like(frc)
+
+    # --- explicit Verlet-like update (your current scheme) ---
+    invM = inv_mass.view(-1,1) * (dt*dt)
+    c    = invM * fric.view(-1,1)
+    g    = gravity.view(1,3)
+
+    acc_term = F * invM
+    x_new    = x * (2.0 - c) - xr * (1.0 - c) + acc_term - g
+
+    # enforce fixed
+    x_new = (1.0 - fixed_mask) * x_new + fixed_mask * rest_pos
+    xr_new = (1.0 - fixed_mask) * x + fixed_mask * rest_pos
+
+    # update previous distance for dashpot
+    prev_dist_new = dist
+
+    return x_new, xr_new, prev_dist_new, frc_next
+
+
+def run_segment(
+    x, xr, prev_dist, frc,
+    steps, start_t,
+    fixed_mask, rest_pos, edge_index, rest,
+    inv_mass, fric, gravity, k_all, z_all, dt,
+    listener_ids, observable, axis, events_dict,
+    driver_ids
+):
+    # collect audio samples (Tseg, C)
+    C = listener_ids.numel()
+    audio_seg = x.new_zeros((steps, C))
+
+    for s in range(steps):
+        t_real = start_t + s
+        # apply events as forces to selected nodes (drivers)
+        if t_real in events_dict:
+            # functional apply: scatter into frc (no in-place on leaf requires_grad)
+            f = events_dict[t_real]
+            f = torch.as_tensor(f, device=frc.device, dtype=frc.dtype).view(1, -1)
+            frc = torch.index_add(frc, 0, driver_ids, f.expand(driver_ids.numel(), -1))
+
+        x, xr, prev_dist, frc = step_explicit_euler_fn(
+            x, xr, prev_dist, frc, fixed_mask, rest_pos, edge_index, rest,
+            inv_mass, fric, gravity, k_all, z_all, dt
+        )
+
+        # observe
+        if observable == "pos":
+            val = x[listener_ids]                       # [C,3]
+        elif observable == "force":
+            # if you want true force observable, recompute forces here like in original
+            i, j = edge_index[0], edge_index[1]
+            d    = x[j] - x[i]
+            dist = (d.pow(2).sum(-1) + 1e-12).sqrt()
+            invL = torch.where(dist > 1e-9, 1.0 / dist, dist.new_zeros(()))
+            dirv = d * invL.unsqueeze(-1)
+            f_el = - k_all * (dist - rest)
+            f_d  = - (z_all / dt) * (dist - prev_dist)
+            linkF= (f_el + f_d).unsqueeze(-1) * dirv
+            F    = x.new_zeros(x.shape)
+            F.index_add_(0, i, -linkF)
+            F.index_add_(0, j,  linkF)
+            val = F[listener_ids]
+        else:
+            raise ValueError("observable must be 'pos'|'force'")
+
+        # axis pick
+        if axis == "all":
+            samp = val.norm(dim=-1)  # [C]
+        elif axis in ("x","y","z"):
+            idx = {"x":0,"y":1,"z":2}[axis]
+            samp = val[..., idx]
+        else:
+            raise ValueError("bad axis")
+
+        audio_seg[s] = samp
+
+    return x, xr, prev_dist, frc, audio_seg
+
 
 class MassSpringModel(nn.Module):
     """
@@ -43,6 +149,10 @@ class MassSpringModel(nn.Module):
         self.dim = 3
         self.dt = float(dt)
         self.dist = dist
+        self.enable_checkpoint = True
+        self.seg_steps = 1000
+
+
 
         # ----- per-mass parameters -----
         mass_from_nodes = nodes[:, 3].clamp_min(1e-12)
@@ -426,7 +536,15 @@ class MassSpringModel(nn.Module):
             listener_ids = ids
 
         steps = int(round(seconds * (fs / self.dt)))
-        raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis, events=events, exciter=exciter, start_frame=start_frame)  # [T_sim,C]
+        if self.enable_checkpoint:
+            raw = self.run_with_checkpointing(
+                seconds, fs=fs,  # careful: your fs vs sim_rate naming
+                observable=observable, axis=axis,
+                listener_ids=listener_ids, events=events,
+                seg_steps=self.seg_steps
+            )
+        else:
+            raw = self.simulate_listeners(steps, listener_ids, observable=observable, axis=axis, events=events)
 
         if hp:
             # raw = self.highpass_observer3d(raw, R=0.95, prime_on_first_call=True)
@@ -485,10 +603,76 @@ class MassSpringModel(nn.Module):
     def run_interactive(self):
         run_interactive_mi(self, sim_rate=int(1/self.dt))
 
+    # ---------------- gradient checkpointing ----------------
+
+
+    def run_with_checkpointing(self,
+        seconds: float,
+        fs: int,
+        observable: str,
+        axis: str,
+        listener_ids: torch.Tensor,
+        events: dict,
+        seg_steps: int = 512,
+    ):
+        # Materialize constants/params once for the whole forward
+        steps_total = int(round(seconds * (fs / self.dt)))
+        device = self.nodes.device
+        dtype  = self.nodes.dtype
+
+        # params
+        inv_mass = self.inv_mass
+        fric     = self.fric
+        k_all    = torch.where(self.neighbor_type==0, self.k_1, self.k_2)
+        z_all    = self.z
+        dt       = torch.as_tensor(self.dt, device=device, dtype=dtype)
+
+        # topology & state (start from current module buffers, but copy to tensors)
+        x  = self.m_pos
+        xr = self.m_posR
+        prev_dist = self.m_prevDist
+        frc = self.m_frc
+
+        fixed_mask = self.fixed_mask
+        rest_pos   = self.rest_pos
+        edge_index = self.edge_index
+        rest       = self.rest
+
+        # outputs
+        C = listener_ids.numel()
+        audio_out = x.new_zeros((steps_total, C))
+
+        t = 0
+        while t < steps_total:
+            cur = min(seg_steps, steps_total - t)
+
+            # Define a lambda that closes over constants but **not** big tensors that change
+            def seg_fn(x, xr, prev_dist, frc):
+                return run_segment(
+                    x, xr, prev_dist, frc,
+                    steps=cur, start_t=t,
+                    fixed_mask=fixed_mask, rest_pos=rest_pos, edge_index=edge_index, rest=rest,
+                    inv_mass=inv_mass, fric=fric, gravity=self.gravity, k_all=k_all, z_all=z_all, dt=dt,
+                    listener_ids=listener_ids, observable=observable, axis=axis, events_dict=events, driver_ids=self._driver_ids
+                )
+
+            # Checkpoint the segment
+            x, xr, prev_dist, frc, audio_seg = checkpoint(
+                seg_fn, x, xr, prev_dist, frc, use_reentrant=False
+            )
+
+            audio_out[t:t+cur] = audio_seg
+            t += cur
+
+        # Optionally do HPF (can be outside checkpoint; it’s cheap and stateless)
+        audio_out = self.hp_filter(audio_out)
+        return audio_out  # [T_sim, C]
+
+
 
 if __name__ == "__main__":
     fs = 16000
-    sim_rate = 4000
+    sim_rate = 16000
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = MassSpringModel.from_json(
@@ -532,6 +716,8 @@ if __name__ == "__main__":
     sf.write("mass_spring.wav", audio.detach().cpu().numpy(), sim_rate)
     sd.play(audio.detach().cpu().numpy(), sim_rate); sd.wait()
 
-    # loss = torch.mean(audio**2)
-    # print("Audio loss:", loss.item())
-    # loss.backward()
+    start = time.time()
+    loss = torch.mean(audio**2)
+    print("Audio loss:", loss.item())
+    loss.backward()
+    print(time.time() - start, "seconds for backward")
