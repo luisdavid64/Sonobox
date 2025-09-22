@@ -150,7 +150,7 @@ class MassSpringModel(nn.Module):
         self.dim = 3
         self.dt = float(dt)
         self.dist = dist
-        self.enable_checkpoint = True
+        self.enable_checkpoint = False
         self.seg_steps = 1000
 
 
