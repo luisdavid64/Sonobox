@@ -74,6 +74,7 @@ def run_segment(
             # functional apply: scatter into frc (no in-place on leaf requires_grad)
             f = events_dict[t_real]
             f = torch.as_tensor(f, device=frc.device, dtype=frc.dtype).view(1, -1)
+            # Print devices
             frc = torch.index_add(frc, 0, driver_ids, f.expand(driver_ids.numel(), -1))
 
         x, xr, prev_dist, frc = step_explicit_euler_fn(
@@ -170,9 +171,11 @@ class MassSpringModel(nn.Module):
         # springs columns: [stiffness, edge_damping, rest_len, neighbor_type]
         # If springs has neighbor_type column, use it to parameterize k
         if springs.shape[1] == 4:
-            self.neighbor_type = springs[:, 3].long()  # 0=first, 1=second
+            # self.neighbor_type = springs[:, 3].long().to(nodes.device)  # 0=first, 1=second
+            self.neighbor_type = nn.Parameter(torch.tensor(springs[:, 3].long(), dtype=torch.long, device=nodes.device), requires_grad=False)
+
         else:
-            self.neighbor_type = torch.zeros(springs.shape[0], dtype=torch.long, device=nodes.device)
+            self.neighbor_type = nn.Parameter(torch.zeros(springs.shape[0], dtype=torch.long, device=nodes.device, requires_grad=False))
         self._logk_first  = nn.Parameter(torch.log(torch.tensor(float(springs[self.neighbor_type==0, 0].mean()), device=nodes.device)))
         self._logk_second = nn.Parameter(torch.log(torch.tensor(float(springs[self.neighbor_type==1, 0].mean()) if (self.neighbor_type==1).any() else springs[:,0].mean(), device=nodes.device)))
         self._logz  = nn.Parameter(torch.log(torch.tensor(float(springs[:, 1].mean()), device=nodes.device)))
@@ -399,13 +402,13 @@ class MassSpringModel(nn.Module):
         if self.drivers is None or len(self.drivers) == 0:
             return None
         ids = self.get_ids(self.drivers)
-        return torch.tensor(ids, device=self.nodes.device, dtype=torch.long)
+        return torch.tensor(ids, device=self.inv_mass.device, dtype=torch.long)
 
     def get_listener_ids(self):
         if self.listeners is None or len(self.listeners) == 0:
             return None
         ids = self.get_ids(self.listeners)
-        return torch.tensor(ids, device=self.nodes.device, dtype=torch.long)
+        return torch.tensor(ids, device=self.inv_mass.device, dtype=torch.long)
 
     def get_fixed_ids(self):
         return torch.nonzero(self.fixed_mask.view(-1) > 0.5, as_tuple=False).view(-1)
@@ -653,7 +656,7 @@ class MassSpringModel(nn.Module):
                     steps=cur, start_t=t,
                     fixed_mask=fixed_mask, rest_pos=rest_pos, edge_index=edge_index, rest=rest,
                     inv_mass=inv_mass, fric=fric, gravity=self.gravity, k_all=k_all, z_all=z_all, dt=dt,
-                    listener_ids=listener_ids, observable=observable, axis=axis, events_dict=events, driver_ids=self._driver_ids
+                    listener_ids=listener_ids, observable=observable, axis=axis, events_dict=events, driver_ids=self.get_driver_ids()
                 )
 
             # Checkpoint the segment
@@ -678,6 +681,7 @@ if __name__ == "__main__":
         device=device, dt=fs/sim_rate
     )
     model.train()  # enable grads
+    model.to("mps")
     # model.run_interactive()
 
     # visualize = False
