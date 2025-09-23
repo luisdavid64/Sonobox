@@ -782,7 +782,7 @@ class MassSpringModel(nn.Module):
         T  = int(round(seconds * fs))
         Nd = drivers.numel()
         u  = self._rasterize_events_to_u(T=T, Nd=Nd, events=events, device=device, dtype=dtype,
-                                        hold=8, shape="cos", driver_axis="z")
+                                        hold=1, shape="cos", driver_axis="z")
 
         # State & render
         q_prev = torch.zeros(k, device=device, dtype=dtype)
