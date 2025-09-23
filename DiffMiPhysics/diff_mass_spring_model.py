@@ -63,6 +63,7 @@ class MassSpringModel(nn.Module):
         # If springs has neighbor_type column, use it to parameterize k
         if springs.shape[1] == 4:
             self.neighbor_type = springs[:, 3].long()  # 0=first, 1=second
+            self.neighbor_type = nn.Parameter(self.neighbor_type, requires_grad=False)
         else:
             self.neighbor_type = torch.zeros(springs.shape[0], dtype=torch.long, device=nodes.device)
         self._logk_first  = nn.Parameter(torch.log(torch.tensor(float(springs[self.neighbor_type==0, 0].mean()), device=nodes.device)))
@@ -497,7 +498,7 @@ class MassSpringModel(nn.Module):
         Linearization around rest: F_k ≈ -K x_k - Z (x_k - x_{k-1})
         K,Z ∈ R^{3×3N}, symmetric PSD. No h-scaling here (this is *discrete* damping).
         """
-        device, dtype = self.nodes.device, self.nodes.dtype
+        device, dtype = self._logz.device, self._logz.dtype
         N = self.N
         dofN = 3 * N
 
@@ -828,6 +829,7 @@ if __name__ == "__main__":
         device=device, dt=1/fs
     )
     model.train()  # enable grads
+    # model.to("mps")
     # model.run_interactive()
 
     # visualize = False
