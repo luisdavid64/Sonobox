@@ -822,6 +822,7 @@ if __name__ == "__main__":
         hp=True,
         events=events,       # same events dict you already use
         mix_audio=True,
+        gamma="diag",
         layout='mono',
         pan_method='by_position',
     )
