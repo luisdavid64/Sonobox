@@ -731,8 +731,9 @@ class MassSpringModel(nn.Module):
         lam, Vk_full = torch.linalg.eigh(S_K)    # ascending
         k = min(n_modes, lam.numel())
         w2 = lam[:k]                             # [k]
-        Vk = Vk_full[:, :k]                      # [k0, k]
-        U  = U0 @ Vk                             # [df, k] final modal basis
+        # Vk = Vk_full[:, :k].detach()                      # [k0, k]
+        Vk = Vk_full[:, :k].detach()                      # [k0, k]
+        U  = (U0 @ Vk)                             # [df, k] final modal basis
 
         # Damping representation
         if diag_gamma:
