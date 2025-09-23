@@ -51,7 +51,7 @@ class MassSpringModel(nn.Module):
         self.register_buffer("mass", mass_from_nodes.clone())
         inv_mass_init = 1.0 / mass_from_nodes[0]  # per miPhysics
         # self.inv_mass = nn.Parameter(inv_mass_init.clone(), requires_grad=False)
-        self.log_inv_mass = nn.Parameter(torch.log(inv_mass_init.clone()), requires_grad=True)
+        self.log_inv_mass = nn.Parameter(torch.log(inv_mass_init.clone()), requires_grad=False)
         
         self.radius    = nn.Parameter(nodes[:, 4].clone(), requires_grad=False)
 
@@ -652,18 +652,32 @@ class MassSpringModel(nn.Module):
     
 
 
+        # self._modal_disc.update({
+        #     "U": U,                # [dof_f, k]
+        #     "w2": w2,              # [k]
+        #     "Zk": Zk,              # [k,k]
+        #     "Gu": Gu,              # [k, 3*Nd]
+        #     "Gy": Gy,              # [Cl, k]
+        #     "idx_free": idx_free,
+        #     "drivers": drivers.detach().clone(),
+        #     "listeners": listeners.detach().clone(),
+        #     "axis": axis,
+        #     "diag_gamma": diag_gamma,
+        # })
+        det = lambda t: t.detach()
         self._modal_disc.update({
-            "U": U,                # [dof_f, k]
-            "w2": w2,              # [k]
-            "Zk": Zk,              # [k,k]
-            "Gu": Gu,              # [k, 3*Nd]
-            "Gy": Gy,              # [Cl, k]
+            "U":  det(U),
+            "w2": det(w2),
+            "Zk": det(Zk),
+            "Gu": det(Gu),
+            "Gy": det(Gy),
             "idx_free": idx_free,
             "drivers": drivers.detach().clone(),
             "listeners": listeners.detach().clone(),
             "axis": axis,
             "diag_gamma": diag_gamma,
         })
+        
 
     def render_modal_audio(self,
                         seconds: float,
@@ -715,11 +729,41 @@ class MassSpringModel(nn.Module):
             self._modal_disc["Zk"] = Zk
             # (K projected stays diagonal via previous eigen-decomp)
 
-        U   = self._modal_disc["U"]             # [df,k]
-        w2  = self._modal_disc["w2"]            # [k]
-        Zk  = self._modal_disc["Zk"]            # [k,k]
-        Gu  = self._modal_disc["Gu"]            # [k,3*Nd]
-        Gy  = self._modal_disc["Gy"]            # [Cl,k]
+        # optims only mass and fric
+        # U   = self._modal_disc["U"]             # [df,k]
+        # w2  = self._modal_disc["w2"]            # [k]
+        # Zk  = self._modal_disc["Zk"]            # [k,k]
+        # Gu  = self._modal_disc["Gu"]            # [k,3*Nd]
+        # Gy  = self._modal_disc["Gy"]            # [Cl,k]
+
+        # Optims all parameterz
+        U0 = self._modal_disc["U"].detach()    # fixed subspace
+        idx_free = self._modal_disc["idx_free"]
+
+        # project current K,Z into that subspace
+        S_K = U0.T @ (Kf @ U0)   # [k,k]
+        S_Z = U0.T @ (Zf @ U0)   # [k,k]
+
+        # small eigendecomp, cheap and differentiable w.r.t. Kf
+        lam, Vk = torch.linalg.eigh(S_K)
+        w2 = lam
+        U  = U0 @ Vk
+
+        # damping in modal coords
+        if diag_gamma:
+            Zk = torch.diag(torch.diag(Vk.T @ S_Z @ Vk))
+        else:
+            Zk = Vk.T @ S_Z @ Vk
+
+        # drivers/listeners
+        Bu_full = self._build_Bu_full(drivers)
+        C_full  = self._build_C_full(listener_ids, axis=axis)
+        Bu = Bu_full.index_select(0, idx_free)
+        C  = C_full.index_select(1, idx_free)
+
+        Gu = U.T @ Bu
+        Gy = C @ U
+
 
         # Global scalars from your integrator
         alpha = self.inv_mass                 # invM scalar (broadcast in your code)
