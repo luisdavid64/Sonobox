@@ -142,6 +142,7 @@ class MassSpringModel(nn.Module):
         self.applyForce(id, force_vec)
 
     # ---------------- interactions (springs) ----------------
+    torch.compile()
     def spring_damper_forces(self):
         """
         miPhysics exact spring force:
@@ -185,6 +186,7 @@ class MassSpringModel(nn.Module):
         Fspr = self.spring_damper_forces()
         self.m_frc = Fspr * (1.0 - self.fixed_mask)
 
+    torch.compile()
     def compute_explicit_euler(self):
         # --- 1) integrate with previous forces ---
         invM  = self.inv_mass.view(-1, 1)                      # [N,1]
@@ -311,12 +313,14 @@ class MassSpringModel(nn.Module):
                 self.hp_y_prev = torch.zeros(C, device=device, dtype=dtype)
                 self.hp_primed = False
 
+    torch.compile()
    # Highpass with no recursion: faster, but not loyal to miphysics sound
     def simple_highpass(self, x: torch.Tensor) -> torch.Tensor:
         y = torch.zeros_like(x)
         y[1:] = x[1:] - x[:-1]
         return y
 
+    torch.compile(backend="aot_eager")
     def highpass_observer3d(self, x: torch.Tensor, R: float | None = None,
                             prime_on_first_call: bool = True) -> torch.Tensor:
         """
