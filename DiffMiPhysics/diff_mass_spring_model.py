@@ -257,8 +257,8 @@ class MassSpringModel(nn.Module):
     # ---------------- interactions (springs) ----------------
     def spring_damper_forces(self):
         """
-        miPhysics exact link force:
-        lnkFrc = -K*(L - rest) - Z*(L - m_prevDist)
+        miPhysics exact spring force:
+        f_spring     = -K*(L - rest) - Z*(L - m_prevDist)
         dir is the *current* unit direction.
         Updates self.m_prevDist <- L (kept with full graph for BPTT).
         Uses k_first for first neighbors, k_second for second neighbors.
