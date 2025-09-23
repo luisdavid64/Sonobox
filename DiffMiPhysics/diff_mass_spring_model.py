@@ -641,6 +641,7 @@ class MassSpringModel(nn.Module):
         if diag_gamma:
             Zk = torch.diag(torch.diag(Zk))
         
+
         # Drivers/listeners (reduce → project)
         Bu_full = self._build_Bu_full(drivers)
         C_full  = self._build_C_full(listeners, axis=axis)
@@ -648,26 +649,6 @@ class MassSpringModel(nn.Module):
         C  = C_full.index_select(1, idx_free)          # [Cl, dof_f]
         Gu = U.T @ Bu                                   # [k, 3*Nd]
         Gy = C @ U                                      # [Cl, k]
-    
-        w   = torch.sqrt(torch.clamp(w2, min=1e-12))        # [k]
-        ctrl = (Gu**2).sum(dim=1)                           # [k]
-        obs  = (Gy**2).sum(dim=0)                           # [k]
-        f_hz = (w / (2*torch.pi)).clamp_min(1.0)
-        p    = 1.25                                         # HF bias (tune 1.0–1.5)
-        score = ctrl * obs * (f_hz / f_hz.max()).pow(p)
-
-        keep = torch.topk(score, k=min(score.numel(), w.numel())).indices
-        keep, _ = torch.sort(keep)
-
-        # prune to requested n_modes (guarantee order)
-        keep = keep[:min(n_modes, keep.numel())]
-
-        # slice everything to 'keep'
-        U   = U[:, keep]
-        w2  = w2[keep]
-        Zk  = Zk.index_select(0, keep).index_select(1, keep)
-        Gu  = Gu.index_select(0, keep)
-        Gy  = Gy.index_select(1, keep)
     
 
 
@@ -766,40 +747,11 @@ class MassSpringModel(nn.Module):
 
         # (Optional) warm-up few samples to suppress start-up clicks
         # for _ in range(3): pass
-        U    = self._modal_disc["U"]       # [dof_free, k]
-        Kf, Zf, idx_free = self._assemble_KZ_dense()   # you already called this earlier; reuse if you can
-        Bu_full = self._build_Bu_full(self.get_driver_ids())
-        Bu_f    = Bu_full.index_select(0, idx_free)    # [dof_free, 3*Nd]
-
-        alpha = self.inv_mass
-        c     = self.fric
-
-        # simple diagonal preconditioner for the correction step
-        Dinv = 1.0 / (1.0 + alpha*(Kf.diag() + Zf.diag()) + 1e-8)     # [dof_free]
-        
 
         for t in range(T):
             ut    = u[t]                      # [3*Nd]
             q_next = A @ q + B @ q_prev + (Uu @ ut)
-
-            # --- residual correction (Jacobi 1-step) ---
-            x_k    = U @ q
-            x_km1  = U @ q_prev
-            x_pred = U @ q_next
-
-            # full-space RHS per your explicit scheme
-            rhs = (2.0 - c)*x_k - (1.0 - c)*x_km1 \
-                - alpha*(Kf @ x_k + Zf @ (x_k - x_km1)) \
-                + alpha*(Bu_f @ ut)
-
-            r    = rhs - x_pred
-            dx   = Dinv * r                 # 1 Jacobi step (cheap)
-
-            x_corr = x_pred + dx
-            q_next = U.T @ x_corr           # fold correction back to modal state
-
-            # output
-            y[t] = Gy @ q_next
+            y[t]   = Gy @ q_next
             q_prev, q = q, q_next
 
         # Optional high-pass
@@ -873,7 +825,6 @@ if __name__ == "__main__":
         layout='mono',
         pan_method='by_position',
     )
-    print("YO YO I am a peace loving decoy")
 
     audio = audio.squeeze()
     
