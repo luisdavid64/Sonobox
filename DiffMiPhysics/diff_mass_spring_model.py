@@ -767,7 +767,7 @@ class MassSpringModel(nn.Module):
 
         # Global scalars from your integrator
         alpha = self.inv_mass                 # invM scalar (broadcast in your code)
-        c     = self.fric                     # friction scalar
+        c     = self.inv_mass * self.fric                     # friction scalar
         # Build the 2-step coefficients in modal space:
         # q_{n+1} = A q_n + B q_{n-1} + Uu u_n,  where
         # A = (2-c)I - αΛ - αΓ,   B = -(1-c)I + αΓ,   Uu = α*Gu
