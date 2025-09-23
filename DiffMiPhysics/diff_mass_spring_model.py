@@ -172,7 +172,7 @@ class MassSpringModel(nn.Module):
         # If springs has neighbor_type column, use it to parameterize k
         if springs.shape[1] == 4:
             # self.neighbor_type = springs[:, 3].long().to(nodes.device)  # 0=first, 1=second
-            self.neighbor_type = nn.Parameter(torch.tensor(springs[:, 3].long(), dtype=torch.long, device=nodes.device), requires_grad=False)
+            self.neighbor_type = nn.Parameter(torch.tensor(springs[:, 3].long().clone(), dtype=torch.long, device=nodes.device), requires_grad=False)
 
         else:
             self.neighbor_type = nn.Parameter(torch.zeros(springs.shape[0], dtype=torch.long, device=nodes.device, requires_grad=False))
