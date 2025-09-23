@@ -681,7 +681,6 @@ if __name__ == "__main__":
         device=device, dt=fs/sim_rate
     )
     model.train()  # enable grads
-    model.to("mps")
     # model.run_interactive()
 
     # visualize = False
