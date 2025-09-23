@@ -128,7 +128,7 @@ class MassSpringModel(nn.Module):
                  drivers=None, listeners=None, config=None,
                  dimX=None, dimY=None, dimZ=None, dist=None,
                  interactionType="FIRST", bounds=[],
-                 dt: float = 1/44100, friction: float = 0.25, gain=10):
+                 dt: float = 1, friction: float = 0.25, gain=10):
         super().__init__()
         # ----- topology & meta -----
         self.nodes = nodes              # [N, 8] (x,y,z,mass,radius,fixed,driver,listener)
