@@ -1,3 +1,5 @@
+from asyncio import events
+from matplotlib.pylab import dtype
 import torch
 from torch import nn
 from typing import Optional
@@ -486,6 +488,340 @@ class MassSpringModel(nn.Module):
     def run_interactive(self):
         run_interactive_mi(self, sim_rate=int(1/self.dt))
 
+    # ---------------- Modal usage ----------------
+
+    def _free_dof_index(self):
+        # 1 for free dofs, 0 for fixed
+        free_mask_node = (1.0 - self.fixed_mask.view(-1))  # [N]
+        free_mask_dof  = free_mask_node.repeat_interleave(3) > 0.5  # [3N]
+        free_idx = torch.nonzero(free_mask_dof, as_tuple=False).view(-1)
+        return free_idx
+
+    def _assemble_KZ_dense(self):
+        """
+        Linearization around rest: F_k ≈ -K x_k - Z (x_k - x_{k-1})
+        K,Z ∈ R^{3N×3N}, symmetric PSD. No h-scaling here (this is *discrete* damping).
+        """
+        device, dtype = self.nodes.device, self.nodes.dtype
+        N = self.N
+        dofN = 3 * N
+
+        # Edge geometry
+        i, j = self.edge_index[0], self.edge_index[1]    # [E]
+        pi, pj = self.rest_pos[i], self.rest_pos[j]      # [E,3]
+        r  = pj - pi
+        L  = (r.pow(2).sum(-1) + 1e-12).sqrt()
+        n  = r / L.unsqueeze(-1)                          # [E,3]
+        nx, ny, nz = n[:,0], n[:,1], n[:,2]
+        Pxx = nx*nx; Pxy = nx*ny; Pxz = nx*nz
+        Pyx = ny*nx; Pyy = ny*ny; Pyz = ny*nz
+        Pzx = nz*nx; Pzy = nz*ny; Pzz = nz*nz
+
+        k_e = self.k   # [E]
+        z_e = self.z   # [E]  (discrete “difference” dashpot gain)
+
+        def scatter_axial(val_e):
+            Bxx = val_e*Pxx; Bxy = val_e*Pxy; Bxz = val_e*Pxz
+            Byx = val_e*Pyx; Byy = val_e*Pyy; Byz = val_e*Pyz
+            Bzx = val_e*Pzx; Bzy = val_e*Pzy; Bzz = val_e*Pzz
+            dof_i = (i*3).unsqueeze(1) + torch.tensor([0,1,2], device=device)
+            dof_j = (j*3).unsqueeze(1) + torch.tensor([0,1,2], device=device)
+            ii = dof_i.unsqueeze(2).expand(-1,3,3).reshape(-1)
+            ij = dof_i.unsqueeze(2).expand(-1,3,3).reshape(-1)
+            ji = dof_j.unsqueeze(2).expand(-1,3,3).reshape(-1)
+            jj = dof_j.unsqueeze(2).expand(-1,3,3).reshape(-1)
+            ci = dof_i.unsqueeze(1).expand(-1,3,3).reshape(-1)
+            cj = dof_j.unsqueeze(1).expand(-1,3,3).reshape(-1)
+            ci2= dof_i.unsqueeze(1).expand(-1,3,3).reshape(-1)
+            cj2= dof_j.unsqueeze(1).expand(-1,3,3).reshape(-1)
+            block = torch.stack([Bxx,Bxy,Bxz, Byx,Byy,Byz, Bzx,Bzy,Bzz], dim=1).reshape(-1)
+            return (ii,ci, block), (ij,cj, -block), (ji,ci2, -block), (jj,cj2, block)
+
+        K = torch.zeros((dofN, dofN), device=device, dtype=dtype)
+        Z = torch.zeros((dofN, dofN), device=device, dtype=dtype)
+        for A, val in ((K, k_e), (Z, z_e)):
+            (ii,ci,p), (ij,cj,m1), (ji,ci2,m2), (jj,cj2,p2) = scatter_axial(val)
+            A.index_put_((ii,ci), p,  accumulate=True)
+            A.index_put_((ij,cj), m1, accumulate=True)
+            A.index_put_((ji,ci2), m2, accumulate=True)
+            A.index_put_((jj,cj2), p2, accumulate=True)
+
+        # Reduce to free DOFs
+        idx = self._free_dof_index()
+        Kf = K.index_select(0, idx).index_select(1, idx)
+        Zf = Z.index_select(0, idx).index_select(1, idx)
+        return Kf, Zf, idx
+
+    def _build_Bu_full(self, drivers: torch.Tensor) -> torch.Tensor:
+        device, dtype = self.nodes.device, self.nodes.dtype
+        Nd, dofN = int(drivers.numel()), 3*self.N
+        Bu = torch.zeros((dofN, 3*Nd), device=device, dtype=dtype)
+        for d, node in enumerate(drivers.tolist()):
+            base = 3*node
+            Bu[base+0, 3*d+0] = 1.0
+            Bu[base+1, 3*d+1] = 1.0
+            Bu[base+2, 3*d+2] = 1.0
+        return Bu
+
+    def _build_C_full(self, listener_ids: torch.Tensor, axis: str='avg') -> torch.Tensor:
+        device, dtype = self.nodes.device, self.nodes.dtype
+        Cn, dofN = int(listener_ids.numel()), 3*self.N
+        C = torch.zeros((Cn, dofN), device=device, dtype=dtype)
+        for c, node in enumerate(listener_ids.tolist()):
+            base = 3*node
+            if axis == 'x':
+                C[c, base+0] = 1.0
+            elif axis == 'y':
+                C[c, base+1] = 1.0
+            elif axis == 'z':
+                C[c, base+2] = 1.0
+            else:  # 'avg' keeps it linear
+                C[c, base+0] = C[c, base+1] = C[c, base+2] = 1.0/3.0
+        return C
+
+    def _rasterize_events_to_u(self, T:int, Nd:int, events:dict,
+                            device, dtype, hold:int=8,
+                            shape:str="cos", driver_axis:str="z"):
+        u = torch.zeros(T, 3*Nd, device=device, dtype=dtype)
+        if not events: return u
+        # envelope
+        if hold <= 1:
+            env = torch.ones(1, device=device, dtype=dtype)
+        else:
+            t = torch.arange(hold, device=device, dtype=dtype)
+            if shape == "cos":
+                env = 0.5 - 0.5*torch.cos(2*torch.pi*(t/(hold-1)))
+            elif shape == "exp":
+                env = torch.exp(-3.0 * t/(hold-1))
+            else:
+                env = torch.ones_like(t, dtype=dtype)
+        # axis for scalar events
+        ax = {"x":0,"y":1,"z":2}.get(driver_axis, 2)
+        ax_mask = torch.zeros(3, device=device, dtype=dtype); ax_mask[ax] = 1.0
+
+        for t0, f in events.items():
+            t0 = int(t0)
+            if t0 >= T: continue
+            f = torch.as_tensor(f, device=device, dtype=dtype).view(-1)
+            if f.numel()==1: f3 = f[0]*ax_mask
+            elif f.numel()>=3: f3 = f[:3]
+            else: continue
+            fv = f3.view(1,3).expand(Nd,3).reshape(1, 3*Nd)
+            t1 = min(T, t0 + env.numel())
+            u[t0:t1, :] += env[:t1-t0].view(-1,1) * fv
+        return u
+
+    def _init_modal_disc(self):
+        if not hasattr(self, "_modal_disc"):
+            self._modal_disc = dict()
+
+    def _compute_disc_modes(self, Kf, Zf, idx_free, drivers, listeners, axis, n_modes, diag_gamma=False):
+        """
+        Diagonalize Kf (M = I here since your inv_mass is scalar), keep k lowest modes.
+        Then project Zf into this basis (full Γ for fidelity, or diag only).
+        """
+        self._init_modal_disc()
+        device, dtype = Kf.device, Kf.dtype
+        dof_free = Kf.shape[0]
+        k = min(n_modes, dof_free)
+
+        # Small/medium -> full eigh; large -> lobpcg
+        if dof_free <= 4000:
+            w2, U = torch.linalg.eigh(Kf)         # ascending
+            w2 = w2[:k]; U = U[:, :k]
+        else:
+            # LOBPCG for k smallest
+            X0 = torch.randn(dof_free, k, device=device, dtype=dtype)
+            w2, U = torch.lobpcg(Kf, k=k, B=None, iK=None, niter=100, X=X0, largest=False)
+            # sort just in case
+            srt = torch.argsort(w2); w2 = w2[srt]; U = U[:, srt]
+
+        # Projections
+        Zk = U.T @ (Zf @ U)              # [k,k]
+        if diag_gamma:
+            Zk = torch.diag(torch.diag(Zk))
+        
+        # Drivers/listeners (reduce → project)
+        Bu_full = self._build_Bu_full(drivers)
+        C_full  = self._build_C_full(listeners, axis=axis)
+        Bu = Bu_full.index_select(0, idx_free)         # [dof_f, 3*Nd]
+        C  = C_full.index_select(1, idx_free)          # [Cl, dof_f]
+        Gu = U.T @ Bu                                   # [k, 3*Nd]
+        Gy = C @ U                                      # [Cl, k]
+    
+        w   = torch.sqrt(torch.clamp(w2, min=1e-12))        # [k]
+        ctrl = (Gu**2).sum(dim=1)                           # [k]
+        obs  = (Gy**2).sum(dim=0)                           # [k]
+        f_hz = (w / (2*torch.pi)).clamp_min(1.0)
+        p    = 1.25                                         # HF bias (tune 1.0–1.5)
+        score = ctrl * obs * (f_hz / f_hz.max()).pow(p)
+
+        keep = torch.topk(score, k=min(score.numel(), w.numel())).indices
+        keep, _ = torch.sort(keep)
+
+        # prune to requested n_modes (guarantee order)
+        keep = keep[:min(n_modes, keep.numel())]
+
+        # slice everything to 'keep'
+        U   = U[:, keep]
+        w2  = w2[keep]
+        Zk  = Zk.index_select(0, keep).index_select(1, keep)
+        Gu  = Gu.index_select(0, keep)
+        Gy  = Gy.index_select(1, keep)
+    
+
+
+        self._modal_disc.update({
+            "U": U,                # [dof_f, k]
+            "w2": w2,              # [k]
+            "Zk": Zk,              # [k,k]
+            "Gu": Gu,              # [k, 3*Nd]
+            "Gy": Gy,              # [Cl, k]
+            "idx_free": idx_free,
+            "drivers": drivers.detach().clone(),
+            "listeners": listeners.detach().clone(),
+            "axis": axis,
+            "diag_gamma": diag_gamma,
+        })
+
+    def render_modal_audio(self,
+                        seconds: float,
+                        fs: int = 16000,
+                        listener_ids: Optional[torch.Tensor] = None,
+                        drivers: Optional[torch.Tensor] = None,
+                        axis: str = "avg",
+                        n_modes: int = 512,
+                        gamma: str = "full",    # 'full' (faithful) or 'diag' (faster)
+                        hp: bool = True,
+                        events: dict = {},
+                        mix_audio: bool = True,
+                        layout: str = "mono",
+                        pan_method: str = "by_position",
+                        start_frame: int = 0):
+        """
+        Discrete-time modal rendering that matches your explicit scheme:
+        x_{k+1} = (2-c) x_k - (1-c) x_{k-1} - α[K x_k + Z(x_k - x_{k-1})] + α B u_k
+        In modal coords (Φ from K), this becomes a *coupled* two-step recurrence via Γ = Φ^T Z Φ.
+        """
+        device, dtype = self.nodes.device, self.nodes.dtype
+        # if listener_ids is None:
+        listener_ids = self.get_listener_ids()
+        # if drivers is None:
+        drivers = self.get_driver_ids()
+
+        # Assemble & reduce
+        Kf, Zf, idx_free = self._assemble_KZ_dense()
+        # Compute/update modal cache if needed
+        diag_gamma = (gamma == "diag")
+        need_modes = (not hasattr(self, "_modal_disc") or
+                    self._modal_disc.get("U") is None or
+                    self._modal_disc.get("diag_gamma") != diag_gamma or
+                    (self._modal_disc.get("drivers") is None) or
+                    not torch.equal(self._modal_disc["drivers"], drivers) or
+                    not torch.equal(self._modal_disc["listeners"], listener_ids) or
+                    self._modal_disc.get("axis") != axis or
+                    self._modal_disc.get("idx_free", None) is None or
+                    not torch.equal(self._modal_disc["idx_free"], idx_free) or
+                    self._modal_disc["U"].shape[1] < min(n_modes, Kf.shape[0]))
+
+        if need_modes:
+            self._compute_disc_modes(Kf, Zf, idx_free, drivers, listener_ids, axis, n_modes, diag_gamma=diag_gamma)
+        else:
+            # light refresh if K/Z changed: re-project into current U (cheap)
+            U = self._modal_disc["U"]
+            Zk = U.T @ (Zf @ U)
+            if diag_gamma: Zk = torch.diag(torch.diag(Zk))
+            self._modal_disc["Zk"] = Zk
+            # (K projected stays diagonal via previous eigen-decomp)
+
+        U   = self._modal_disc["U"]             # [df,k]
+        w2  = self._modal_disc["w2"]            # [k]
+        Zk  = self._modal_disc["Zk"]            # [k,k]
+        Gu  = self._modal_disc["Gu"]            # [k,3*Nd]
+        Gy  = self._modal_disc["Gy"]            # [Cl,k]
+
+        # Global scalars from your integrator
+        alpha = self.inv_mass                 # invM scalar (broadcast in your code)
+        c     = self.fric                     # friction scalar
+        # Build the 2-step coefficients in modal space:
+        # q_{n+1} = A q_n + B q_{n-1} + Uu u_n,  where
+        # A = (2-c)I - αΛ - αΓ,   B = -(1-c)I + αΓ,   Uu = α*Gu
+        k = w2.numel()
+        I = torch.eye(k, device=device, dtype=dtype)
+        Λ = torch.diag(w2)                    # [k,k]
+        A = (2.0 - c) * I - alpha * (Λ + Zk)
+        B = -(1.0 - c) * I + alpha * Zk
+        Uu = alpha * Gu                       # [k, 3*Nd]
+
+        # Inputs (events are already in *samples*)
+        T  = int(round(seconds * fs))
+        Nd = drivers.numel()
+        u  = self._rasterize_events_to_u(T=T, Nd=Nd, events=events, device=device, dtype=dtype,
+                                        hold=8, shape="cos", driver_axis="z")
+
+        # State & render
+        q_prev = torch.zeros(k, device=device, dtype=dtype)
+        q      = torch.zeros(k, device=device, dtype=dtype)
+        y      = torch.empty((T, Gy.shape[0]), device=device, dtype=dtype)
+
+        # (Optional) warm-up few samples to suppress start-up clicks
+        # for _ in range(3): pass
+        U    = self._modal_disc["U"]       # [dof_free, k]
+        Kf, Zf, idx_free = self._assemble_KZ_dense()   # you already called this earlier; reuse if you can
+        Bu_full = self._build_Bu_full(self.get_driver_ids())
+        Bu_f    = Bu_full.index_select(0, idx_free)    # [dof_free, 3*Nd]
+
+        alpha = self.inv_mass
+        c     = self.fric
+
+        # simple diagonal preconditioner for the correction step
+        Dinv = 1.0 / (1.0 + alpha*(Kf.diag() + Zf.diag()) + 1e-8)     # [dof_free]
+        
+
+        for t in range(T):
+            ut    = u[t]                      # [3*Nd]
+            q_next = A @ q + B @ q_prev + (Uu @ ut)
+
+            # --- residual correction (Jacobi 1-step) ---
+            x_k    = U @ q
+            x_km1  = U @ q_prev
+            x_pred = U @ q_next
+
+            # full-space RHS per your explicit scheme
+            rhs = (2.0 - c)*x_k - (1.0 - c)*x_km1 \
+                - alpha*(Kf @ x_k + Zf @ (x_k - x_km1)) \
+                + alpha*(Bu_f @ ut)
+
+            r    = rhs - x_pred
+            dx   = Dinv * r                 # 1 Jacobi step (cheap)
+
+            x_corr = x_pred + dx
+            q_next = U.T @ x_corr           # fold correction back to modal state
+
+            # output
+            y[t] = Gy @ q_next
+            q_prev, q = q, q_next
+
+        # Optional high-pass
+        if hp:
+            y = self.hp_filter(y)
+
+        # Mixdown & normalize (reuse your pipeline)
+        audio = y
+        if mix_audio:
+            audio = mix_down(
+                self, audio,
+                layout=layout, method=pan_method,
+                listener_ids=listener_ids,
+                normalize=False, soft_clip=False, energy_comp=True,
+            )
+        audio = audio.transpose(1,0)  # [K,T]
+        peak = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
+        audio = audio / peak.unsqueeze(-1)
+        return audio.T  # [T,K]
+
+
+
 
 if __name__ == "__main__":
     fs = 16000
@@ -510,19 +846,34 @@ if __name__ == "__main__":
     events = event_dict_seconds_to_samples(events, fs)
     
     
-    audio = model.render_audio(
-        seconds=seconds,
+    # audio = model.render_audio(
+    #     seconds=seconds,
+    #     fs=fs,
+    #     observable='pos',
+    #     axis='all',
+    #     listener_ids=model.get_listener_ids(),
+    #     layout='mono',
+    #     pan_method='by_position',
+    #     hp=True,
+    #     events=events,
+    #     exciter=None,
+    #     mix_audio=True
+    # )  # [T_audio, 1]
+
+    audio = model.render_modal_audio(
+        seconds=1.0,
         fs=fs,
-        observable='pos',
-        axis='all',
         listener_ids=model.get_listener_ids(),
+        drivers=model.get_driver_ids(),
+        axis='avg',          # 'x'|'y'|'z'|'avg' (linear; 'avg' ≈ your 'all')
+        n_modes=1024,         # keep the most audible modes
+        hp=True,
+        events=events,       # same events dict you already use
+        mix_audio=True,
         layout='mono',
         pan_method='by_position',
-        hp=True,
-        events=events,
-        exciter=None,
-        mix_audio=True
-    )  # [T_audio, 1]
+    )
+    print("YO YO I am a peace loving decoy")
 
     audio = audio.squeeze()
     
@@ -530,6 +881,6 @@ if __name__ == "__main__":
     sf.write("mass_spring.wav", audio.detach().cpu().numpy(), fs)
     sd.play(audio.detach().cpu().numpy(), fs); sd.wait()
 
-    # loss = torch.mean(audio**2)
-    # print("Audio loss:", loss.item())
-    # loss.backward()
+    loss = torch.mean(audio**2)
+    print("Audio loss:", loss.item())
+    loss.backward()
