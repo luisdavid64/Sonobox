@@ -144,8 +144,8 @@ class MassSpringModel(nn.Module):
     # ---------------- interactions (springs) ----------------
     def spring_damper_forces(self):
         """
-        miPhysics exact link force:
-        lnkFrc = -K*(L - rest) - Z*(L - m_prevDist)
+        miPhysics exact spring force:
+        f_spring = -K*(L - rest) - Z*(L - m_prevDist)
         dir is the *current* unit direction.
         Updates self.m_prevDist <- L (kept with full graph for BPTT).
         Uses k_first for first neighbors, k_second for second neighbors.
@@ -161,9 +161,9 @@ class MassSpringModel(nn.Module):
         # scalar link force (Hooke + dashpot on distance change)
         f_el   = - k * (m_dist - self.rest)          # [E]
         f_damp = - z * (m_dist - self.m_prevDist)    # [E]
-        lnkFrc = f_el + f_damp                                 # [E]
+        f_spring = f_el + f_damp                                 # [E]
 
-        f_vec = lnkFrc.unsqueeze(-1) * dirv                    # [E,3]
+        f_vec = f_spring.unsqueeze(-1) * dirv                    # [E,3]
 
         # scatter to nodes (functional index_add to avoid in-place)
         F = torch.zeros_like(self.m_pos)                       # [N,3]
