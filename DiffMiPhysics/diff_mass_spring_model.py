@@ -263,11 +263,6 @@ class MassSpringModel(nn.Module):
                    dimX=dimX, dimY=dimY, dimZ=dimZ, dist=dist,
                    interactionType=interactionType, bounds=bounds, dt=dt, friction=friction)
 
-    @classmethod
-    def from_json(cls, path: str, device: Optional[torch.device] = None, dt: float = 1/16000):
-        config = load_config(path)
-        return cls.from_config(config, device=device, dt=dt)
-
     def to_config(self):
         return model_to_config(self)
 
@@ -500,7 +495,7 @@ class MassSpringModel(nn.Module):
     def _assemble_KZ_dense(self):
         """
         Linearization around rest: F_k ≈ -K x_k - Z (x_k - x_{k-1})
-        K,Z ∈ R^{3N×3N}, symmetric PSD. No h-scaling here (this is *discrete* damping).
+        K,Z ∈ R^{3×3N}, symmetric PSD. No h-scaling here (this is *discrete* damping).
         """
         device, dtype = self.nodes.device, self.nodes.dtype
         N = self.N
@@ -679,6 +674,7 @@ class MassSpringModel(nn.Module):
         })
         
 
+    # @torch.compile()
     def render_modal_audio(self,
                         seconds: float,
                         fs: int = 16000,
@@ -686,7 +682,7 @@ class MassSpringModel(nn.Module):
                         drivers: Optional[torch.Tensor] = None,
                         axis: str = "avg",
                         n_modes: int = 512,
-                        gamma: str = "full",    # 'full' (faithful) or 'diag' (faster)
+                        gamma: str = "full",    # 'full' or 'diag'
                         hp: bool = True,
                         events: dict = {},
                         mix_audio: bool = True,
@@ -694,20 +690,19 @@ class MassSpringModel(nn.Module):
                         pan_method: str = "by_position",
                         start_frame: int = 0):
         """
-        Discrete-time modal rendering that matches your explicit scheme:
-        x_{k+1} = (2-c) x_k - (1-c) x_{k-1} - α[K x_k + Z(x_k - x_{k-1})] + α B u_k
-        In modal coords (Φ from K), this becomes a *coupled* two-step recurrence via Γ = Φ^T Z Φ.
+        Modal rendering with toggleable damping:
+        - gamma='full': uses full Γ = U^T Z U (k×k) → O(k^2) per step
+        - gamma='diag': uses only diag(Γ)        → O(k) per step
         """
         device, dtype = self.nodes.device, self.nodes.dtype
-        # if listener_ids is None:
-        listener_ids = self.get_listener_ids()
-        # if drivers is None:
-        drivers = self.get_driver_ids()
+        listener_ids = self.get_listener_ids() if listener_ids is None else listener_ids
+        drivers      = self.get_driver_ids()   if drivers      is None else drivers
+        diag_gamma   = (gamma == "diag")
 
-        # Assemble & reduce
+        # 1) Assemble reduced K, Z once (you can later switch this to linear-combo bases)
         Kf, Zf, idx_free = self._assemble_KZ_dense()
-        # Compute/update modal cache if needed
-        diag_gamma = (gamma == "diag")
+
+        # 2) Modal cache check (same as your code)
         need_modes = (not hasattr(self, "_modal_disc") or
                     self._modal_disc.get("U") is None or
                     self._modal_disc.get("diag_gamma") != diag_gamma or
@@ -720,89 +715,93 @@ class MassSpringModel(nn.Module):
                     self._modal_disc["U"].shape[1] < min(n_modes, Kf.shape[0]))
 
         if need_modes:
+            # This fills a cache with U (subspace), etc. You can leave it as-is.
             self._compute_disc_modes(Kf, Zf, idx_free, drivers, listener_ids, axis, n_modes, diag_gamma=diag_gamma)
-        else:
-            # light refresh if K/Z changed: re-project into current U (cheap)
-            U = self._modal_disc["U"]
-            Zk = U.T @ (Zf @ U)
-            if diag_gamma: Zk = torch.diag(torch.diag(Zk))
-            self._modal_disc["Zk"] = Zk
-            # (K projected stays diagonal via previous eigen-decomp)
 
-        # optims only mass and fric
-        # U   = self._modal_disc["U"]             # [df,k]
-        # w2  = self._modal_disc["w2"]            # [k]
-        # Zk  = self._modal_disc["Zk"]            # [k,k]
-        # Gu  = self._modal_disc["Gu"]            # [k,3*Nd]
-        # Gy  = self._modal_disc["Gy"]            # [Cl,k]
-
-        # Optims all parameterz
-        U0 = self._modal_disc["U"].detach()    # fixed subspace
+        # --- Build a *training-safe* subspace projection ---
+        # If you want grads through U, avoid .detach(); if you only train scalars (k,z,fric), detaching is fine.
+        U0       = self._modal_disc["U"]         # [df, k0] cached subspace (k0 >= k)
         idx_free = self._modal_disc["idx_free"]
 
-        # project current K,Z into that subspace
-        S_K = U0.T @ (Kf @ U0)   # [k,k]
-        S_Z = U0.T @ (Zf @ U0)   # [k,k]
+        # Project current K, Z into U0 (small k0×k0)
+        S_K = U0.T @ (Kf @ U0)                   # [k0, k0]
+        S_Z = U0.T @ (Zf @ U0)                   # [k0, k0]
 
-        # small eigendecomp, cheap and differentiable w.r.t. Kf
-        lam, Vk = torch.linalg.eigh(S_K)
-        w2 = lam
-        U  = U0 @ Vk
+        # Small eigendecomp → the first k modes
+        lam, Vk_full = torch.linalg.eigh(S_K)    # ascending
+        k = min(n_modes, lam.numel())
+        w2 = lam[:k]                             # [k]
+        Vk = Vk_full[:, :k]                      # [k0, k]
+        U  = U0 @ Vk                             # [df, k] final modal basis
 
-        # damping in modal coords
+        # Damping representation
         if diag_gamma:
-            Zk = torch.diag(torch.diag(Vk.T @ S_Z @ Vk))
+            # diag(Γ) = diag( Vk^T S_Z Vk )  without forming full k×k Γ
+            SZV = S_Z @ Vk                      # [k0, k]
+            gamma_vec = (Vk * SZV).sum(dim=0)   # [k]
+            Zk = None
         else:
-            Zk = Vk.T @ S_Z @ Vk
+            # full Γ in k×k space
+            Zk = Vk.T @ S_Z @ Vk                # [k, k]
+            gamma_vec = None
 
-        # drivers/listeners
-        Bu_full = self._build_Bu_full(drivers)
-        C_full  = self._build_C_full(listener_ids, axis=axis)
-        Bu = Bu_full.index_select(0, idx_free)
-        C  = C_full.index_select(1, idx_free)
+        # Drivers/listeners projection
+        Bu_full = self._build_Bu_full(drivers)           # [3N, 3*Nd]
+        C_full  = self._build_C_full(listener_ids, axis=axis)  # [C, 3N]
+        Bu      = Bu_full.index_select(0, idx_free)      # [df, 3*Nd]
+        C       = C_full.index_select(1, idx_free)       # [C, df]
 
-        Gu = U.T @ Bu
-        Gy = C @ U
+        Gu = U.T @ Bu                                    # [k, 3*Nd]
+        Gy = C  @ U                                      # [C, k]
 
+        # 3) Two-step coefficients
+        alpha = self.inv_mass                            # scalar
+        c     = self.inv_mass * self.fric                # scalar
 
-        # Global scalars from your integrator
-        alpha = self.inv_mass                 # invM scalar (broadcast in your code)
-        c     = self.inv_mass * self.fric                     # friction scalar
-        # Build the 2-step coefficients in modal space:
-        # q_{n+1} = A q_n + B q_{n-1} + Uu u_n,  where
-        # A = (2-c)I - αΛ - αΓ,   B = -(1-c)I + αΓ,   Uu = α*Gu
-        k = w2.numel()
-        I = torch.eye(k, device=device, dtype=dtype)
-        Λ = torch.diag(w2)                    # [k,k]
-        A = (2.0 - c) * I - alpha * (Λ + Zk)
-        B = -(1.0 - c) * I + alpha * Zk
-        Uu = alpha * Gu                       # [k, 3*Nd]
+        if diag_gamma:
+            # elementwise recurrence: q_{n+1} = a*q_n + b*q_{n-1} + (Uu @ u_n)
+            a = (2.0 - c) - alpha * (w2 + gamma_vec)     # [k]
+            b = -(1.0 - c) + alpha *  gamma_vec          # [k]
+            Uu = alpha * Gu                              # [k, 3*Nd]
+        else:
+            # coupled recurrence with dense A,B
+            I = torch.eye(k, device=device, dtype=dtype)
+            Λ = torch.diag(w2)                           # [k, k]
+            A = (2.0 - c) * I - alpha * (Λ + Zk)         # [k, k]
+            B = -(1.0 - c) * I + alpha * Zk              # [k, k]
+            Uu = alpha * Gu                              # [k, 3*Nd]
 
-        # Inputs (events are already in *samples*)
+        # 4) Inputs (you can switch to on-the-fly later to save memory)
         T  = int(round(seconds * fs))
         Nd = drivers.numel()
         u  = self._rasterize_events_to_u(T=T, Nd=Nd, events=events, device=device, dtype=dtype,
-                                        hold=1, shape="cos", driver_axis="z")
+                                        hold=1, shape="cos", driver_axis="z")  # [T, 3*Nd]
 
-        # State & render
+        # 5) State & render
         q_prev = torch.zeros(k, device=device, dtype=dtype)
         q      = torch.zeros(k, device=device, dtype=dtype)
-        y      = torch.empty((T, Gy.shape[0]), device=device, dtype=dtype)
+        y      = torch.empty((T, Gy.shape[0]), device=device, dtype=dtype)  # [T, C]
 
-        # (Optional) warm-up few samples to suppress start-up clicks
-        # for _ in range(3): pass
+        if diag_gamma:
+            # O(k) per step
+            for t in range(T):
+                r_t   = Uu @ u[t]                    # [k]
+                q_next = a * q + b * q_prev + r_t    # [k]
+                y[t]   = Gy @ q_next                 # [C]
+                q_prev, q = q, q_next
+        else:
+            # O(k^2) per step
+            for t in range(T):
+                r_t   = Uu @ u[t]                    # [k]
+                q_next = A @ q + B @ q_prev + r_t    # [k]
+                y[t]   = Gy @ q_next                 # [C]
+                q_prev, q = q, q_next
 
-        for t in range(T):
-            ut    = u[t]                      # [3*Nd]
-            q_next = A @ q + B @ q_prev + (Uu @ ut)
-            y[t]   = Gy @ q_next
-            q_prev, q = q, q_next
-
-        # Optional high-pass
+        # 6) Optional HPF
         if hp:
-            y = self.hp_filter(y)
+            y = self.hp_filter(y)                    # [T, C]
 
-        # Mixdown & normalize (reuse your pipeline)
+        # 7) Mixdown & normalize
         audio = y
         if mix_audio:
             audio = mix_down(
@@ -811,10 +810,10 @@ class MassSpringModel(nn.Module):
                 listener_ids=listener_ids,
                 normalize=False, soft_clip=False, energy_comp=True,
             )
-        audio = audio.transpose(1,0)  # [K,T]
-        peak = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
+        audio = audio.transpose(1, 0)  # [K, T]
+        peak  = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
         audio = audio / peak.unsqueeze(-1)
-        return audio.T  # [T,K]
+        return audio.T  # [T, K]
 
 
 
