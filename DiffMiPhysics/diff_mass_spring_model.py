@@ -484,13 +484,13 @@ class MassSpringModel(nn.Module):
     def run_interactive(self):
         run_interactive_mi(self, sim_rate=int(1/self.dt))
 
-    # ---------------- Modal usage ----------------
+    # ---------------- Modal Synthesis ----------------
 
     def _free_dof_index(self):
         # 1 for free dofs, 0 for fixed
         free_mask_node = (1.0 - self.fixed_mask.view(-1))  # [N]
         free_mask_dof  = free_mask_node.repeat_interleave(3) > 0.5  # [3N]
-        free_idx = torch.nonzero(free_mask_dof, as_tuple=False).view(-1)
+        free_idx = torch.nonzero(free_mask_dof).view(-1)
         return free_idx
 
     def _assemble_KZ_dense(self):
@@ -559,7 +559,7 @@ class MassSpringModel(nn.Module):
             Bu[base+2, 3*d+2] = 1.0
         return Bu
 
-    def _build_C_full(self, listener_ids: torch.Tensor, axis: str='avg') -> torch.Tensor:
+    def _build_C_full(self, listener_ids: torch.Tensor, axis: str='all') -> torch.Tensor:
         device, dtype = self.nodes.device, self.nodes.dtype
         Cn, dofN = int(listener_ids.numel()), 3*self.N
         C = torch.zeros((Cn, dofN), device=device, dtype=dtype)
@@ -571,7 +571,7 @@ class MassSpringModel(nn.Module):
                 C[c, base+1] = 1.0
             elif axis == 'z':
                 C[c, base+2] = 1.0
-            else:  # 'avg' keeps it linear
+            else:  # 'all' keeps it linear
                 C[c, base+0] = C[c, base+1] = C[c, base+2] = 1.0/3.0
         return C
 
@@ -681,7 +681,7 @@ class MassSpringModel(nn.Module):
                         fs: int = 16000,
                         listener_ids: Optional[torch.Tensor] = None,
                         drivers: Optional[torch.Tensor] = None,
-                        axis: str = "avg",
+                        axis: str = "all",
                         n_modes: int = 512,
                         gamma: str = "full",    # 'full' or 'diag'
                         hp: bool = True,
@@ -863,7 +863,7 @@ if __name__ == "__main__":
         fs=fs,
         listener_ids=model.get_listener_ids(),
         drivers=model.get_driver_ids(),
-        axis='avg',          # 'x'|'y'|'z'|'avg' (linear; 'avg' ≈ your 'all')
+        axis='all',          # 'x'|'y'|'z'|'all' (linear; 'all' ≈ your 'all')
         n_modes=1024,         # keep the most audible modes
         hp=True,
         events=events,       # same events dict you already use
