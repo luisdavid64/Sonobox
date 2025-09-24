@@ -1,7 +1,8 @@
 from asyncio import events
 import torch
 from typing import Optional
-from util.util import event_dict_seconds_to_samples, load_event_from_json, save_event_to_json
+from util.audio_helpers import mix_down, rms_normalize
+from util.util import event_dict_seconds_to_samples, load_event_from_json
 from exciters import *
 from diff_mass_spring_model import MassSpringModel
 
@@ -324,10 +325,13 @@ class ModalMassSpringModel(MassSpringModel):
                 normalize=False, soft_clip=False, energy_comp=True,
             )
         audio = audio.transpose(1, 0)  # [K, T]
-        audio = rms_normalize(audio)  # normalize to -12 dBFS
-        # peak  = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
-        # audio = audio / peak.unsqueeze(-1)
+        # audio = rms_normalize(audio)  # normalize to -12 dBFS
+        peak  = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
+        audio = audio / peak.unsqueeze(-1)
         return audio.T  # [T, K]
+
+    def render_audio(self, seconds: float, fs: int = 16000, observable: str = "pos", axis: str = "all", listener_ids: torch.Tensor | None = None, layout: str = "stereo", pan_method: str = "by_position", hp: bool = True, gain: float | None = None, events: dict = ..., exciter=None, mix_audio: bool = True, start_frame=0) -> torch.Tensor:
+        return self.render_modal_audio(seconds, fs, n_modes=1500, gamma="full", listener_ids=listener_ids, layout=layout, axis=axis, events=events, pan_method=pan_method, hp=hp, mix_audio=mix_audio, start_frame=start_frame)
 
 
 
@@ -343,7 +347,7 @@ if __name__ == "__main__":
 
     # # Render 1s of audio and backprop a simple power loss
     seconds = 1.0
-    events = load_event_from_json("events/two_hits.json")
+    events = load_event_from_json("events/bow.json")
     events = event_dict_seconds_to_samples(events, fs)
 
     audio = model.render_modal_audio(
