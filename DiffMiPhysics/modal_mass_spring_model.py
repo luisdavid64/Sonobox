@@ -185,20 +185,6 @@ class ModalMassSpringModel(MassSpringModel):
         Gu = U.T @ Bu                                   # [k, 3*Nd]
         Gy = C @ U                                      # [Cl, k]
     
-
-
-        # self._modal_disc.update({
-        #     "U": U,                # [dof_f, k]
-        #     "w2": w2,              # [k]
-        #     "Zk": Zk,              # [k,k]
-        #     "Gu": Gu,              # [k, 3*Nd]
-        #     "Gy": Gy,              # [Cl, k]
-        #     "idx_free": idx_free,
-        #     "drivers": drivers.detach().clone(),
-        #     "listeners": listeners.detach().clone(),
-        #     "axis": axis,
-        #     "diag_gamma": diag_gamma,
-        # })
         det = lambda t: t.detach()
         self._modal_disc.update({
             "U":  det(U),
@@ -241,18 +227,6 @@ class ModalMassSpringModel(MassSpringModel):
 
         # 1) Assemble reduced K, Z once (you can later switch this to linear-combo bases)
         Kf, Zf, idx_free = self._assemble_KZ_dense()
-
-        # 2) Modal cache check (same as your code)
-        # need_modes = (not hasattr(self, "_modal_disc") or
-        #             self._modal_disc.get("U") is None or
-        #             self._modal_disc.get("diag_gamma") != diag_gamma or
-        #             (self._modal_disc.get("drivers") is None) or
-        #             not torch.equal(self._modal_disc["drivers"], drivers) or
-        #             not torch.equal(self._modal_disc["listeners"], listener_ids) or
-        #             self._modal_disc.get("axis") != axis or
-        #             self._modal_disc.get("idx_free", None) is None or
-        #             not torch.equal(self._modal_disc["idx_free"], idx_free) or
-        #             self._modal_disc["U"].shape[1] < min(n_modes, Kf.shape[0]))
 
         # if need_modes:
         #     # This fills a cache with U (subspace), etc. You can leave it as-is.
