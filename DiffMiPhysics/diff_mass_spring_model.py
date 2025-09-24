@@ -51,7 +51,8 @@ class MassSpringModel(nn.Module):
         self.register_buffer("mass", mass_from_nodes.clone())
         inv_mass_init = 1.0 / mass_from_nodes[0]  # per miPhysics
         # self.inv_mass = nn.Parameter(inv_mass_init.clone(), requires_grad=False)
-        self.log_inv_mass = nn.Parameter(torch.log(inv_mass_init.clone()), requires_grad=False)
+        self.log_inv_mass = nn.Parameter(torch.log(inv_mass_init.clone()), requires_grad=True)
+        # self.log_inv_mass = nn.Parameter(torch.log(inv_mass_init.clone()), requires_grad=False)
         
         self.radius    = nn.Parameter(nodes[:, 4].clone(), requires_grad=False)
 
