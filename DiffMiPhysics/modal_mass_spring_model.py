@@ -1,14 +1,7 @@
 from asyncio import events
-from matplotlib.pylab import dtype
 import torch
-from torch import nn
 from typing import Optional
-from util.topology_utils import build_grid_nodes, build_edges_by_type, dedupe_undirected
-from util.viz_utils import plot_model_graph_3d, render_traj_taichi3d, plot_spectrogram, run_interactive_mi
-from util.audio_helpers import axis_pick_t, mix_down, normalize_rms_to_dbfs, rms_normalize
 from util.util import event_dict_seconds_to_samples, load_event_from_json, save_event_to_json
-from util.config_utils import load_config, save_config, model_to_config
-import json
 from exciters import *
 from diff_mass_spring_model import MassSpringModel
 
@@ -45,9 +38,13 @@ class ModalMassSpringModel(MassSpringModel):
         i, j = self.edge_index[0], self.edge_index[1]    # [E]
         pi, pj = self.rest_pos[i], self.rest_pos[j]      # [E,3]
         r  = pj - pi
+        # Distance
         L  = (r.pow(2).sum(-1) + 1e-12).sqrt()
+        # Directional cosines
         n  = r / L.unsqueeze(-1)                          # [E,3]
         nx, ny, nz = n[:,0], n[:,1], n[:,2]
+
+        # Projection matrix (outer product)
         Pxx = nx*nx; Pxy = nx*ny; Pxz = nx*nz
         Pyx = ny*nx; Pyy = ny*ny; Pyz = ny*nz
         Pzx = nz*nx; Pzy = nz*ny; Pzz = nz*nz
@@ -72,6 +69,7 @@ class ModalMassSpringModel(MassSpringModel):
             block = torch.stack([Bxx,Bxy,Bxz, Byx,Byy,Byz, Bzx,Bzy,Bzz], dim=1).reshape(-1)
             return (ii,ci, block), (ij,cj, -block), (ji,ci2, -block), (jj,cj2, block)
 
+        # Assemble global K, Z, size [3N,3N]
         K = torch.zeros((dofN, dofN), device=device, dtype=dtype)
         Z = torch.zeros((dofN, dofN), device=device, dtype=dtype)
         for A, val in ((K, k_e), (Z, z_e)):
@@ -326,8 +324,9 @@ class ModalMassSpringModel(MassSpringModel):
                 normalize=False, soft_clip=False, energy_comp=True,
             )
         audio = audio.transpose(1, 0)  # [K, T]
-        peak  = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
-        audio = audio / peak.unsqueeze(-1)
+        audio = rms_normalize(audio)  # normalize to -12 dBFS
+        # peak  = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
+        # audio = audio / peak.unsqueeze(-1)
         return audio.T  # [T, K]
 
 
