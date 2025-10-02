@@ -330,8 +330,153 @@ class ModalMassSpringModel(MassSpringModel):
         audio = audio / peak.unsqueeze(-1)
         return audio.T  # [T, K]
 
+    # def render_audio(self, seconds: float, fs: int = 16000, observable: str = "pos", axis: str = "all", listener_ids: torch.Tensor | None = None, layout: str = "stereo", pan_method: str = "by_position", hp: bool = True, gain: float | None = None, events: dict = ..., exciter=None, mix_audio: bool = True, start_frame=0) -> torch.Tensor:
+    #     return self.render_modal_audio(seconds, fs, n_modes=1500, gamma="full", listener_ids=listener_ids, layout=layout, axis=axis, events=events, pan_method=pan_method, hp=hp, mix_audio=mix_audio, start_frame=start_frame)
+
+    def render_modal_impulse_diag(
+            self,
+            seconds: float,
+            fs: int = 16000,
+            force_vec=(3.0, 3.0, 3.0),   # impulse @ t=0 applied to every driver
+            listener_ids: Optional[torch.Tensor] = None,
+            drivers: Optional[torch.Tensor] = None,
+            axis: str = "all",
+            n_modes: int = 512,
+            hp: bool = True,
+            mix_audio: bool = True,
+            layout: str = "mono",
+            pan_method: str = "by_position",
+            start_frame: int = 0,
+        ):
+        """
+        Vectorized impulse response for gamma='diag' (no Python time loop).
+
+        Implements the closed-form solution of:
+            q_{n+1} = a ⊙ q_n + b ⊙ q_{n-1}       (no input for n>=1)
+        with impulse only at n=0:
+            q_0 = 0
+            q_1 = r0 = (alpha * Gu @ u0)
+
+        Closed form per mode m:
+            q_n = r0_m * (r+_m^n - r-_m^n) / (r+_m - r-_m)
+        (and if r+≈r- we fallback to q_n = r0_m * n * r^ {n-1}).
+
+        Returns: [T, K] audio tensor (time-major), like render_modal_audio.
+        """
+        device, dtype = self.nodes.device, self.nodes.dtype
+        listener_ids = self.get_listener_ids() if listener_ids is None else listener_ids
+        drivers      = self.get_driver_ids()   if drivers      is None else drivers
+
+        # 1) Assemble K, Z (free DOFs) and compute modal subspace with diag Γ
+        Kf, Zf, idx_free = self._assemble_KZ_dense()
+
+        # Reuse the cached subspace machinery (diag_gamma=True)
+        self._compute_disc_modes(
+            Kf, Zf, idx_free,
+            drivers, listener_ids, axis,
+            n_modes, diag_gamma=True
+        )
+
+        # Cached/constructed bits
+        U0       = self._modal_disc["U"]                # [df, k0]
+        idx_free = self._modal_disc["idx_free"]
+
+        # Project current K, Z to subspace, then pick k smallest modes
+        S_K = U0.T @ (Kf @ U0)                          # [k0, k0]
+        S_Z = U0.T @ (Zf @ U0)                          # [k0, k0]
+        lam, Vk_full = torch.linalg.eigh(S_K)
+        k = min(n_modes, lam.numel())
+        w2 = lam[:k]                                     # [k]
+        Vk = Vk_full[:, :k].detach()                     # [k0, k]
+        U  = (U0 @ Vk)                                   # [df, k]
+
+        # Diagonal Γ entries in modal coords
+        SZV = S_Z @ Vk                                   # [k0, k]
+        gamma_vec = (Vk * SZV).sum(dim=0)                # [k]
+
+        # Driver/listener projection
+        Bu_full = self._build_Bu_full(drivers)           # [3N, 3*Nd]
+        C_full  = self._build_C_full(listener_ids, axis=axis)  # [C, 3N]
+        Bu      = Bu_full.index_select(0, idx_free)      # [df, 3*Nd]
+        C       = C_full.index_select(1, idx_free)       # [C, df]
+        Gu      = U.T @ Bu                                # [k, 3*Nd]
+        Gy      = C  @ U                                  # [C, k]
+
+        # 2) Recurrence coefficients (diag path)
+        alpha = self.inv_mass                             # scalar
+        c     = self.inv_mass * self.fric                 # scalar
+        a = (2.0 - c) - alpha * (w2 + gamma_vec)          # [k]
+        b = -(1.0 - c) + alpha *  gamma_vec               # [k]
+
+        # 3) Build the single-sample impulse u0 (applied to every driver)
+        Nd = int(drivers.numel())
+        f3 = torch.as_tensor(force_vec, device=device, dtype=dtype).view(3)
+        u0 = f3.unsqueeze(0).expand(Nd, 3).reshape(3*Nd)   # [3*Nd]
+
+        # Modal "kick" at n=1: r0 = (alpha * Gu @ u0)
+        r0 = (alpha * (Gu @ u0))                           # [k]
+
+        # 4) Closed-form q_n for n = 0..T-1 (vectorized)
+        T = int(round(seconds * fs))
+        n = torch.arange(T, device=device, dtype=dtype).view(T, 1)     # [T,1]
+
+        # Roots of r^2 - a r - b = 0 (use complex to be robust)
+        a_c = a.to(torch.complex64)
+        b_c = b.to(torch.complex64)
+        disc = a_c*a_c + 4.0*b_c
+        sqrt_disc = torch.sqrt(disc)
+        r_plus  = 0.5*(a_c + sqrt_disc)      # [k]
+        r_minus = 0.5*(a_c - sqrt_disc)      # [k]
+        delta   = r_plus - r_minus            # [k]
+
+        # Powers r^n, broadcast to [T,k]
+        rp = r_plus.unsqueeze(0)  ** n
+        rm = r_minus.unsqueeze(0) ** n
+
+        # Handle near-double-root modes stably
+        eps = 1e-6
+        near = (torch.abs(delta) < eps)
+        delta_safe = torch.where(near, torch.ones_like(delta), delta)
+
+        # General case
+        q_full = (r0.to(torch.complex64).unsqueeze(0) * (rp - rm) / delta_safe)  # [T,k]
+
+        # Near-double-root fallback: q_n = r0 * n * r^{n-1}
+        if near.any():
+            r = torch.where(near, r_plus, torch.ones_like(r_plus))                # [k]
+            # n * r^{n-1} = n * (r^n) / r
+            r_pow_n = r.unsqueeze(0) ** n                                         # [T,k]
+            fallback = (r0.to(torch.complex64).unsqueeze(0) *
+                        (n * r_pow_n / torch.clamp(r, min=1e-12)))
+            q_full = torch.where(near.unsqueeze(0), fallback, q_full)
+
+        # Real part (the recurrence and parameters are real → result must be real)
+        q_full = q_full.real.to(dtype)                                            # [T,k]
+
+        # 5) Outputs in listener space: y = Q @ Gy^T
+        y = q_full @ Gy.T                                                          # [T, C]
+
+        # 6) Optional HPF and mixdown
+        if hp:
+            y = self.hp_filter(y)                                                 # [T, C]
+
+        audio = y
+        if mix_audio:
+            audio = mix_down(
+                self, audio,
+                layout=layout, method=pan_method,
+                listener_ids=listener_ids,
+                normalize=False, soft_clip=False, energy_comp=True,
+            )
+
+        # Normalize by per-channel peak (like your render)
+        audio = audio.transpose(1, 0)  # [K, T]
+        peak  = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
+        audio = audio / peak.unsqueeze(-1)
+        return audio.T  # [T, K]
+
     def render_audio(self, seconds: float, fs: int = 16000, observable: str = "pos", axis: str = "all", listener_ids: torch.Tensor | None = None, layout: str = "stereo", pan_method: str = "by_position", hp: bool = True, gain: float | None = None, events: dict = ..., exciter=None, mix_audio: bool = True, start_frame=0) -> torch.Tensor:
-        return self.render_modal_audio(seconds, fs, n_modes=1500, gamma="full", listener_ids=listener_ids, layout=layout, axis=axis, events=events, pan_method=pan_method, hp=hp, mix_audio=mix_audio, start_frame=start_frame)
+        return self.render_modal_impulse_diag(seconds, fs, force_vec=(3,3,3), n_modes=1500, listener_ids=listener_ids, layout=layout, axis=axis, hp=hp, mix_audio=mix_audio, start_frame=start_frame)
 
 
 
@@ -350,17 +495,31 @@ if __name__ == "__main__":
     events = load_event_from_json("events/bow.json")
     events = event_dict_seconds_to_samples(events, fs)
 
-    audio = model.render_modal_audio(
+    # audio = model.render_modal_audio(
+    #     seconds=1.0,
+    #     fs=fs,
+    #     listener_ids=model.get_listener_ids(),
+    #     drivers=model.get_driver_ids(),
+    #     axis='all',          # 'x'|'y'|'z'|'all' (linear; 'all' ≈ your 'all')
+    #     n_modes=1024,         # keep the most audible modes
+    #     hp=True,
+    #     events=events,       # same events dict you already use
+    #     mix_audio=True,
+    #     gamma="diag",
+    #     layout='mono',
+    #     pan_method='by_position',
+    # )
+
+    audio = model.render_modal_impulse_diag(
         seconds=1.0,
         fs=fs,
+        force_vec=(3.0, 3.0, 3.0),
         listener_ids=model.get_listener_ids(),
         drivers=model.get_driver_ids(),
-        axis='all',          # 'x'|'y'|'z'|'all' (linear; 'all' ≈ your 'all')
-        n_modes=1024,         # keep the most audible modes
+        axis='all',
+        n_modes=1024,
         hp=True,
-        events=events,       # same events dict you already use
         mix_audio=True,
-        gamma="diag",
         layout='mono',
         pan_method='by_position',
     )
