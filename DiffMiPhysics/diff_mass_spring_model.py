@@ -242,7 +242,15 @@ class MassSpringModel(nn.Module):
         dist = float(geom["distance"])
         mass_radius = float(geom["massesRadius"])
         mass = float(config.get("parameters", {}).get("M", [1.0])[0])
-        stiffness = float(config.get("parameters", {}).get("K", [1e-3])[0])
+        # check if parameters/K1 exists, otherwise fallback to K
+        stiffness_1 = None
+        stiffness_2 = None
+        if "K1" in config.get("parameters", {}) and "K2" in config.get("parameters", {}):
+            stiffness_1 = float(config.get("parameters", {}).get("K1", [1e-3])[0])
+            stiffness_2 = float(config.get("parameters", {}).get("K2", [1e-3])[0])
+        else:
+            stiffness_1 = float(config.get("parameters", {}).get("K", [1e-3])[0])
+            stiffness_2 = stiffness_1
         edge_damp = float(config.get("parameters", {}).get("C", [0.0])[0])
         interactionType = str(geom.get("interactionType", "FIRST"))
         drivers = torch.tensor([parse_mass_name(n) for n in config.get("sonification_set_up", {}).get("drivers", [])],
@@ -257,7 +265,7 @@ class MassSpringModel(nn.Module):
                                  drivers=drivers, listeners=listeners,
                                  bounds=bounds, device=device)
         edge_index, springs = build_edges_by_type(dimX, dimY, dimZ, dist,
-                                                  stiffness=stiffness, damping=edge_damp,
+                                                  stiffness_1=stiffness_1, stiffness_2=stiffness_2, damping=edge_damp,
                                                   interaction_type=interactionType, device=device)
         return cls(nodes, edge_index, springs, drivers, listeners, config,
                    dimX=dimX, dimY=dimY, dimZ=dimZ, dist=dist,
@@ -503,7 +511,7 @@ if __name__ == "__main__":
     #     # render_traj_taichi3d(traj.detach().cpu().numpy(), model.edge_index.cpu().numpy())
 
     # # Render 1s of audio and backprop a simple power loss
-    seconds = 1.0
+    seconds = 6.0
     events = load_event_from_json("events/two_hits.json")
     events = event_dict_seconds_to_samples(events, fs)
     

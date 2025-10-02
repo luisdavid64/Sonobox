@@ -124,30 +124,30 @@ def build_edges_second_neighbor(dimX, dimY, dimZ, dist, stiffness, damping, devi
     springs = torch.tensor(attrs, dtype=torch.float32, device=device)
     return edge_index, springs
 
-def build_edges_by_type(dimX, dimY, dimZ, dist, stiffness=1e-3, damping=0.0, interaction_type="FIRST", device=None):
+def build_edges_by_type(dimX, dimY, dimZ, dist, stiffness_1=1e-3, stiffness_2=1e-3, damping=0.0, interaction_type="FIRST", device=None):
     """
     Build edge_index and springs based on the specified interaction_type.
     Supported types: "FIRST", "SECOND", "CHECKERED", "DILATED2", "CLIQUE_2x2"
     """
     if interaction_type == "FIRST":
-        return build_edges_nearest(dimX, dimY, dimZ, dist, stiffness, damping, device)
+        return build_edges_nearest(dimX, dimY, dimZ, dist, stiffness_1, damping, device)
     elif interaction_type == "SECOND":
-        edge_index, springs = build_edges_nearest(dimX, dimY, dimZ, dist, stiffness, damping, device)
-        edge_index2, springs2 = build_edges_second_neighbor(dimX, dimY, dimZ, dist, stiffness, damping, device)
+        edge_index, springs = build_edges_nearest(dimX, dimY, dimZ, dist, stiffness_1, damping, device)
+        edge_index2, springs2 = build_edges_second_neighbor(dimX, dimY, dimZ, dist, stiffness_2, damping, device)
         edge_index = torch.cat([edge_index, edge_index2], dim=1)
         springs = torch.cat([springs, springs2], dim=0)
         return edge_index, springs
     elif interaction_type == "CHECKERED":
         # Checkerboard and wireframe
-        edge_index, springs = build_edges_checkerboard(dimX, dimY, dimZ, dist, stiffness, damping, device)
-        return wrap_wireframe(edge_index, springs, dimX, dimY, dimZ, dist, stiffness, damping, device)
+        edge_index, springs = build_edges_checkerboard(dimX, dimY, dimZ, dist, stiffness_1, damping, device)
+        return wrap_wireframe(edge_index, springs, dimX, dimY, dimZ, dist, stiffness_1, damping, device)
     elif interaction_type == "DILATED2":
         # Dilated and wireframe
-        edge_index2, springs2 = build_edges_dilated2(dimX, dimY, dimZ, dist, stiffness, damping, device)
-        return wrap_wireframe(edge_index2, springs2, dimX, dimY, dimZ, dist, stiffness, damping, device)
+        edge_index2, springs2 = build_edges_dilated2(dimX, dimY, dimZ, dist, stiffness_1, damping, device)
+        return wrap_wireframe(edge_index2, springs2, dimX, dimY, dimZ, dist, stiffness_1, damping, device)
     elif interaction_type == "CLIQUE_2x2":
-        edge_index, springs = build_edges_clique_2x2(dimX, dimY, dimZ, dist, stiffness, damping, device)
-        return wrap_wireframe(edge_index, springs, dimX, dimY, dimZ, dist, stiffness, damping, device)
+        edge_index, springs = build_edges_clique_2x2(dimX, dimY, dimZ, dist, stiffness_1, damping, device)
+        return wrap_wireframe(edge_index, springs, dimX, dimY, dimZ, dist, stiffness_1, damping, device)
     else:
         raise ValueError(f"Unknown interaction_type: {interaction_type}")
 
