@@ -197,126 +197,100 @@ class ModalMassSpringModel(MassSpringModel):
             "axis": axis,
             "diag_gamma": diag_gamma,
         })
-        
 
-    # @torch.compile()
-    def render_modal_audio(self,
-                        seconds: float,
-                        fs: int = 16000,
-                        listener_ids: Optional[torch.Tensor] = None,
-                        drivers: Optional[torch.Tensor] = None,
-                        axis: str = "all",
-                        n_modes: int = 512,
-                        gamma: str = "full",    # 'full' or 'diag'
-                        hp: bool = True,
-                        events: dict = {},
-                        mix_audio: bool = True,
-                        layout: str = "mono",
-                        pan_method: str = "by_position",
-                        start_frame: int = 0):
-        """
-        Modal rendering with toggleable damping:
-        - gamma='full': uses full Γ = U^T Z U (k×k) → O(k^2) per step
-        - gamma='diag': uses only diag(Γ)        → O(k) per step
-        """
+    # ---------- helpers (shared) ----------
+    def _prep_modal_diag(self, listener_ids, drivers, axis, n_modes):
+        """Build reduced modal model with diagonal Γ; return a small dict of tensors."""
         device, dtype = self.nodes.device, self.nodes.dtype
         listener_ids = self.get_listener_ids() if listener_ids is None else listener_ids
         drivers      = self.get_driver_ids()   if drivers      is None else drivers
-        diag_gamma   = (gamma == "diag")
 
-        # 1) Assemble reduced K, Z once (you can later switch this to linear-combo bases)
         Kf, Zf, idx_free = self._assemble_KZ_dense()
+        # cache the large-subspace U0; we will re-diagonalize in that subspace
+        self._compute_disc_modes(Kf, Zf, idx_free, drivers, listener_ids, axis, n_modes, diag_gamma=True)
 
-        # if need_modes:
-        #     # This fills a cache with U (subspace), etc. You can leave it as-is.
-        self._compute_disc_modes(Kf, Zf, idx_free, drivers, listener_ids, axis, n_modes, diag_gamma=diag_gamma)
-
-        # --- Build a *training-safe* subspace projection ---
-        # If you want grads through U, avoid .detach(); if you only train scalars (k,z,fric), detaching is fine.
-        U0       = self._modal_disc["U"]         # [df, k0] cached subspace (k0 >= k)
+        U0       = self._modal_disc["U"]                # [df, k0]
         idx_free = self._modal_disc["idx_free"]
 
-        # Project current K, Z into U0 (small k0×k0)
-        S_K = U0.T @ (Kf @ U0)                   # [k0, k0]
-        S_Z = U0.T @ (Zf @ U0)                   # [k0, k0]
+        # project to subspace and take k lowest
+        S_K = U0.T @ (Kf @ U0)                          # [k0,k0]
+        S_Z = U0.T @ (Zf @ U0)                          # [k0,k0]
+        lam, Vk_full = torch.linalg.eigh(S_K)
 
-        # Small eigendecomp → the first k modes
-        lam, Vk_full = torch.linalg.eigh(S_K)    # ascending
         k = min(n_modes, lam.numel())
-        w2 = lam[:k]                             # [k]
-        # Vk = Vk_full[:, :k].detach()                      # [k0, k]
-        Vk = Vk_full[:, :k].detach()                      # [k0, k]
-        U  = (U0 @ Vk)                             # [df, k] final modal basis
+        w2 = lam[:k]                                     # [k]
+        Vk = Vk_full[:, :k].detach()                     # [k0,k]
+        U  = (U0 @ Vk)                                   # [df,k]
 
-        # Damping representation
-        if diag_gamma:
-            # diag(Γ) = diag( Vk^T S_Z Vk )  without forming full k×k Γ
-            SZV = S_Z @ Vk                      # [k0, k]
-            gamma_vec = (Vk * SZV).sum(dim=0)   # [k]
-            Zk = None
-        else:
-            # full Γ in k×k space
-            Zk = Vk.T @ S_Z @ Vk                # [k, k]
-            gamma_vec = None
+        # diag Γ entries
+        SZV = S_Z @ Vk                                   # [k0,k]
+        gamma_vec = (Vk * SZV).sum(dim=0)                # [k]
 
-        # Drivers/listeners projection
-        Bu_full = self._build_Bu_full(drivers)           # [3N, 3*Nd]
-        C_full  = self._build_C_full(listener_ids, axis=axis)  # [C, 3N]
-        Bu      = Bu_full.index_select(0, idx_free)      # [df, 3*Nd]
-        C       = C_full.index_select(1, idx_free)       # [C, df]
+        # IO projections
+        Bu_full = self._build_Bu_full(drivers)           # [3N,3*Nd]
+        C_full  = self._build_C_full(listener_ids, axis=axis)  # [C,3N]
+        Bu      = Bu_full.index_select(0, idx_free)      # [df,3*Nd]
+        C       = C_full.index_select(1, idx_free)       # [C,df]
+        Gu      = U.T @ Bu                                # [k,3*Nd]
+        Gy      = C  @ U                                  # [C,k]
+        Nd      = int(drivers.numel())
 
-        Gu = U.T @ Bu                                    # [k, 3*Nd]
-        Gy = C  @ U                                      # [C, k]
+        return dict(
+            w2=w2, gamma_vec=gamma_vec, Gu=Gu, Gy=Gy,
+            Nd=Nd, listener_ids=listener_ids
+        )
 
-        # 3) Two-step coefficients
-        alpha = self.inv_mass                            # scalar
-        c     = self.inv_mass * self.fric                # scalar
+    def _modal_diag_coeffs(self, w2, gamma_vec):
+        """Return per-mode recurrence coefficients a, b for the diag path."""
+        alpha = self.inv_mass
+        c     = self.inv_mass * self.fric
+        a = (2.0 - c) - alpha * (w2 + gamma_vec)         # [k]
+        b = -(1.0 - c) + alpha *  gamma_vec              # [k]
+        return a, b, alpha
 
-        if diag_gamma:
-            # elementwise recurrence: q_{n+1} = a*q_n + b*q_{n-1} + (Uu @ u_n)
-            a = (2.0 - c) - alpha * (w2 + gamma_vec)     # [k]
-            b = -(1.0 - c) + alpha *  gamma_vec          # [k]
-            Uu = alpha * Gu                              # [k, 3*Nd]
-        else:
-            # coupled recurrence with dense A,B
-            I = torch.eye(k, device=device, dtype=dtype)
-            Λ = torch.diag(w2)                           # [k, k]
-            A = (2.0 - c) * I - alpha * (Λ + Zk)         # [k, k]
-            B = -(1.0 - c) * I + alpha * Zk              # [k, k]
-            Uu = alpha * Gu                              # [k, 3*Nd]
+    def _modal_kernel(self, a, b, T, dtype, device):
+        """
+        Closed-form time kernel g[n] per mode for n=0..T-1 (vectorized).
+        g[n] = (r+^n - r-^n) / (r+ - r-)   with double-root fallback.
+        """
+        n = torch.arange(T, device=device, dtype=dtype).view(T, 1)  # [T,1]
+        a_c = a.to(torch.complex64); b_c = b.to(torch.complex64)
+        disc = a_c*a_c + 4.0*b_c
+        sqrt_disc = torch.sqrt(disc)
+        r_plus  = 0.5*(a_c + sqrt_disc)                 # [k]
+        r_minus = 0.5*(a_c - sqrt_disc)                 # [k]
+        delta   = r_plus - r_minus                      # [k]
 
-        # 4) Inputs (you can switch to on-the-fly later to save memory)
-        T  = int(round(seconds * fs))
-        Nd = drivers.numel()
-        u  = self._rasterize_events_to_u(T=T, Nd=Nd, events=events, device=device, dtype=dtype,
-                                        hold=1, shape="cos", driver_axis="z")  # [T, 3*Nd]
+        rp = r_plus.unsqueeze(0)  ** n                  # [T,k]
+        rm = r_minus.unsqueeze(0) ** n                  # [T,k]
 
-        # 5) State & render
-        q_prev = torch.zeros(k, device=device, dtype=dtype)
-        q      = torch.zeros(k, device=device, dtype=dtype)
-        y      = torch.empty((T, Gy.shape[0]), device=device, dtype=dtype)  # [T, C]
+        eps = 1e-6
+        near = (torch.abs(delta) < eps)
+        delta_safe = torch.where(near, torch.ones_like(delta), delta)
+        g_full = (rp - rm) / delta_safe.unsqueeze(0)    # [T,k]
 
-        if diag_gamma:
-            # O(k) per step
-            for t in range(T):
-                r_t   = Uu @ u[t]                    # [k]
-                q_next = a * q + b * q_prev + r_t    # [k]
-                y[t]   = Gy @ q_next                 # [C]
-                q_prev, q = q, q_next
-        else:
-            # O(k^2) per step
-            for t in range(T):
-                r_t   = Uu @ u[t]                    # [k]
-                q_next = A @ q + B @ q_prev + r_t    # [k]
-                y[t]   = Gy @ q_next                 # [C]
-                q_prev, q = q, q_next
+        if near.any():
+            r = torch.where(near, r_plus, torch.ones_like(r_plus))
+            r_pow_n = r.unsqueeze(0) ** n
+            fallback = n * r_pow_n / torch.clamp(r, min=1e-12)
+            g_full = torch.where(near.unsqueeze(0), fallback, g_full)
 
-        # 6) Optional HPF
+        return g_full.real.to(dtype)                    # [T,k]
+
+    def _build_u0(self, f, Nd, device, dtype):
+        """Turn force f into a flat [3*Nd] vector (broadcast [3] → all drivers)."""
+        f = torch.as_tensor(f, device=device, dtype=dtype).view(-1)
+        if f.numel() == 3:
+            return f.unsqueeze(0).expand(Nd, 3).reshape(3*Nd)
+        if f.numel() == 3*Nd:
+            return f
+        raise ValueError(f"Force must be length 3 or 3*Nd (got {f.numel()}).")
+
+    def _finalize_audio(self, y_time_C, listener_ids, layout, pan_method, hp, mix_audio):
+        """HPF → mixdown → per-channel peak normalize → [T,K]."""
         if hp:
-            y = self.hp_filter(y)                    # [T, C]
-
-        # 7) Mixdown & normalize
-        audio = y
+            y_time_C = self.hp_filter(y_time_C)
+        audio = y_time_C
         if mix_audio:
             audio = mix_down(
                 self, audio,
@@ -324,20 +298,17 @@ class ModalMassSpringModel(MassSpringModel):
                 listener_ids=listener_ids,
                 normalize=False, soft_clip=False, energy_comp=True,
             )
-        audio = audio.transpose(1, 0)  # [K, T]
-        # audio = rms_normalize(audio)  # normalize to -12 dBFS
+        audio = audio.transpose(1, 0)  # [K,T]
         peak  = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
         audio = audio / peak.unsqueeze(-1)
-        return audio.T  # [T, K]
-
-    # def render_audio(self, seconds: float, fs: int = 16000, observable: str = "pos", axis: str = "all", listener_ids: torch.Tensor | None = None, layout: str = "stereo", pan_method: str = "by_position", hp: bool = True, gain: float | None = None, events: dict = ..., exciter=None, mix_audio: bool = True, start_frame=0) -> torch.Tensor:
-    #     return self.render_modal_audio(seconds, fs, n_modes=1500, gamma="full", listener_ids=listener_ids, layout=layout, axis=axis, events=events, pan_method=pan_method, hp=hp, mix_audio=mix_audio, start_frame=start_frame)
+        return audio.T  # [T,K]
+    # ---------- end helpers ----------
 
     def render_modal_impulse_diag(
             self,
             seconds: float,
             fs: int = 16000,
-            force_vec=(3.0, 3.0, 3.0),   # impulse @ t=0 applied to every driver
+            force_vec=(3.0, 3.0, 3.0),
             listener_ids: Optional[torch.Tensor] = None,
             drivers: Optional[torch.Tensor] = None,
             axis: str = "all",
@@ -348,141 +319,24 @@ class ModalMassSpringModel(MassSpringModel):
             pan_method: str = "by_position",
             start_frame: int = 0,
         ):
-        """
-        Vectorized impulse response for gamma='diag' (no Python time loop).
-
-        Implements the closed-form solution of:
-            q_{n+1} = a ⊙ q_n + b ⊙ q_{n-1}       (no input for n>=1)
-        with impulse only at n=0:
-            q_0 = 0
-            q_1 = r0 = (alpha * Gu @ u0)
-
-        Closed form per mode m:
-            q_n = r0_m * (r+_m^n - r-_m^n) / (r+_m - r-_m)
-        (and if r+≈r- we fallback to q_n = r0_m * n * r^ {n-1}).
-
-        Returns: [T, K] audio tensor (time-major), like render_modal_audio.
-        """
         device, dtype = self.nodes.device, self.nodes.dtype
-        listener_ids = self.get_listener_ids() if listener_ids is None else listener_ids
-        drivers      = self.get_driver_ids()   if drivers      is None else drivers
+        prep = self._prep_modal_diag(listener_ids, drivers, axis, n_modes)
+        a, b, alpha = self._modal_diag_coeffs(prep["w2"], prep["gamma_vec"])
 
-        # 1) Assemble K, Z (free DOFs) and compute modal subspace with diag Γ
-        Kf, Zf, idx_free = self._assemble_KZ_dense()
-
-        # Reuse the cached subspace machinery (diag_gamma=True)
-        self._compute_disc_modes(
-            Kf, Zf, idx_free,
-            drivers, listener_ids, axis,
-            n_modes, diag_gamma=True
-        )
-
-        # Cached/constructed bits
-        U0       = self._modal_disc["U"]                # [df, k0]
-        idx_free = self._modal_disc["idx_free"]
-
-        # Project current K, Z to subspace, then pick k smallest modes
-        S_K = U0.T @ (Kf @ U0)                          # [k0, k0]
-        S_Z = U0.T @ (Zf @ U0)                          # [k0, k0]
-        lam, Vk_full = torch.linalg.eigh(S_K)
-        k = min(n_modes, lam.numel())
-        w2 = lam[:k]                                     # [k]
-        Vk = Vk_full[:, :k].detach()                     # [k0, k]
-        U  = (U0 @ Vk)                                   # [df, k]
-
-        # Diagonal Γ entries in modal coords
-        SZV = S_Z @ Vk                                   # [k0, k]
-        gamma_vec = (Vk * SZV).sum(dim=0)                # [k]
-
-        # Driver/listener projection
-        Bu_full = self._build_Bu_full(drivers)           # [3N, 3*Nd]
-        C_full  = self._build_C_full(listener_ids, axis=axis)  # [C, 3N]
-        Bu      = Bu_full.index_select(0, idx_free)      # [df, 3*Nd]
-        C       = C_full.index_select(1, idx_free)       # [C, df]
-        Gu      = U.T @ Bu                                # [k, 3*Nd]
-        Gy      = C  @ U                                  # [C, k]
-
-        # 2) Recurrence coefficients (diag path)
-        alpha = self.inv_mass                             # scalar
-        c     = self.inv_mass * self.fric                 # scalar
-        a = (2.0 - c) - alpha * (w2 + gamma_vec)          # [k]
-        b = -(1.0 - c) + alpha *  gamma_vec               # [k]
-
-        # 3) Build the single-sample impulse u0 (applied to every driver)
-        Nd = int(drivers.numel())
-        f3 = torch.as_tensor(force_vec, device=device, dtype=dtype).view(3)
-        u0 = f3.unsqueeze(0).expand(Nd, 3).reshape(3*Nd)   # [3*Nd]
-
-        # Modal "kick" at n=1: r0 = (alpha * Gu @ u0)
-        r0 = (alpha * (Gu @ u0))                           # [k]
-
-        # 4) Closed-form q_n for n = 0..T-1 (vectorized)
         T = int(round(seconds * fs))
-        n = torch.arange(T, device=device, dtype=dtype).view(T, 1)     # [T,1]
+        g_full = self._modal_kernel(a, b, T, dtype, device)              # [T,k]
 
-        # Roots of r^2 - a r - b = 0 (use complex to be robust)
-        a_c = a.to(torch.complex64)
-        b_c = b.to(torch.complex64)
-        disc = a_c*a_c + 4.0*b_c
-        sqrt_disc = torch.sqrt(disc)
-        r_plus  = 0.5*(a_c + sqrt_disc)      # [k]
-        r_minus = 0.5*(a_c - sqrt_disc)      # [k]
-        delta   = r_plus - r_minus            # [k]
-
-        # Powers r^n, broadcast to [T,k]
-        rp = r_plus.unsqueeze(0)  ** n
-        rm = r_minus.unsqueeze(0) ** n
-
-        # Handle near-double-root modes stably
-        eps = 1e-6
-        near = (torch.abs(delta) < eps)
-        delta_safe = torch.where(near, torch.ones_like(delta), delta)
-
-        # General case
-        q_full = (r0.to(torch.complex64).unsqueeze(0) * (rp - rm) / delta_safe)  # [T,k]
-
-        # Near-double-root fallback: q_n = r0 * n * r^{n-1}
-        if near.any():
-            r = torch.where(near, r_plus, torch.ones_like(r_plus))                # [k]
-            # n * r^{n-1} = n * (r^n) / r
-            r_pow_n = r.unsqueeze(0) ** n                                         # [T,k]
-            fallback = (r0.to(torch.complex64).unsqueeze(0) *
-                        (n * r_pow_n / torch.clamp(r, min=1e-12)))
-            q_full = torch.where(near.unsqueeze(0), fallback, q_full)
-
-        # Real part (the recurrence and parameters are real → result must be real)
-        q_full = q_full.real.to(dtype)                                            # [T,k]
-
-        # 5) Outputs in listener space: y = Q @ Gy^T
-        y = q_full @ Gy.T                                                          # [T, C]
-
-        # 6) Optional HPF and mixdown
-        if hp:
-            y = self.hp_filter(y)                                                 # [T, C]
-
-        audio = y
-        if mix_audio:
-            audio = mix_down(
-                self, audio,
-                layout=layout, method=pan_method,
-                listener_ids=listener_ids,
-                normalize=False, soft_clip=False, energy_comp=True,
-            )
-
-        # Normalize by per-channel peak (like your render)
-        audio = audio.transpose(1, 0)  # [K, T]
-        peak  = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
-        audio = audio / peak.unsqueeze(-1)
-        return audio.T  # [T, K]
-
-    def render_audio(self, seconds: float, fs: int = 16000, observable: str = "pos", axis: str = "all", listener_ids: torch.Tensor | None = None, layout: str = "stereo", pan_method: str = "by_position", hp: bool = True, gain: float | None = None, events: dict = ..., exciter=None, mix_audio: bool = True, start_frame=0) -> torch.Tensor:
-        return self.render_modal_impulse_diag(seconds, fs, force_vec=(3,3,3), n_modes=1500, listener_ids=listener_ids, layout=layout, axis=axis, hp=hp, mix_audio=mix_audio, start_frame=start_frame)
+        u0 = self._build_u0(force_vec, prep["Nd"], device, dtype)         # [3*Nd]
+        r0 = alpha * (prep["Gu"] @ u0)                                    # [k]
+        q  = g_full * r0.unsqueeze(0)                                     # [T,k]
+        y  = q @ prep["Gy"].T                                             # [T,C]
+        return self._finalize_audio(y, prep["listener_ids"], layout, pan_method, hp, mix_audio)
 
     def render_modal_events_diag_overlap_add(
             self,
             seconds: float,
             fs: int = 16000,
-            events: dict | None = None,   # {t0_sample: [fx,fy,fz]} or [3*Nd] per event
+            events: dict | None = None,   # {t0_sample: [fx,fy,fz]} or [3*Nd]
             listener_ids: Optional[torch.Tensor] = None,
             drivers: Optional[torch.Tensor] = None,
             axis: str = "all",
@@ -492,128 +346,75 @@ class ModalMassSpringModel(MassSpringModel):
             layout: str = "mono",
             pan_method: str = "by_position",
         ):
-        """
-        LTI overlap-add for multiple impulses (diag Γ), no per-sample loop.
-        Each events[t0] is applied at sample index t0 and broadcast to all drivers
-        if it’s a 3-vector; or you can pass a full per-driver vector of length 3*Nd.
-        Returns [T, K] audio (time-major).
-        """
         device, dtype = self.nodes.device, self.nodes.dtype
-        listener_ids = self.get_listener_ids() if listener_ids is None else listener_ids
-        drivers      = self.get_driver_ids()   if drivers      is None else drivers
         events = events or {}
 
-        # --- 1) Assemble reduced model and modal projections (diag Γ) ---
-        Kf, Zf, idx_free = self._assemble_KZ_dense()
-        self._compute_disc_modes(Kf, Zf, idx_free, drivers, listener_ids, axis, n_modes, diag_gamma=True)
-
-        U0       = self._modal_disc["U"]                 # [df, k0]
-        idx_free = self._modal_disc["idx_free"]
-
-        S_K = U0.T @ (Kf @ U0)                           # [k0,k0]
-        S_Z = U0.T @ (Zf @ U0)                           # [k0,k0]
-        lam, Vk_full = torch.linalg.eigh(S_K)
-        k = min(n_modes, lam.numel())
-        w2 = lam[:k]                                     # [k]
-        Vk = Vk_full[:, :k].detach()                     # [k0,k]
-        U  = (U0 @ Vk)                                   # [df,k]
-
-        # diag Γ
-        SZV = S_Z @ Vk                                   # [k0,k]
-        gamma_vec = (Vk * SZV).sum(dim=0)                # [k]
-
-        # I/O projections
-        Bu_full = self._build_Bu_full(drivers)           # [3N, 3*Nd]
-        C_full  = self._build_C_full(listener_ids, axis=axis)  # [C,3N]
-        Bu      = Bu_full.index_select(0, idx_free)      # [df,3*Nd]
-        C       = C_full.index_select(1, idx_free)       # [C,df]
-        Gu      = U.T @ Bu                                # [k,3*Nd]
-        Gy      = C  @ U                                  # [C,k]
-
-        # --- 2) Precompute per-mode impulse kernel g[n] (closed form) ---
-        alpha = self.inv_mass
-        c     = self.inv_mass * self.fric
-        a = (2.0 - c) - alpha * (w2 + gamma_vec)         # [k]
-        b = -(1.0 - c) + alpha *  gamma_vec              # [k]
+        prep = self._prep_modal_diag(listener_ids, drivers, axis, n_modes)
+        a, b, alpha = self._modal_diag_coeffs(prep["w2"], prep["gamma_vec"])
 
         T = int(round(seconds * fs))
-        n = torch.arange(T, device=device, dtype=dtype).view(T, 1)  # [T,1]
+        g_full = self._modal_kernel(a, b, T, dtype, device)              # [T,k]
 
-        a_c = a.to(torch.complex64); b_c = b.to(torch.complex64)
-        disc = a_c*a_c + 4.0*b_c
-        sqrt_disc = torch.sqrt(disc)
-        r_plus  = 0.5*(a_c + sqrt_disc)                  # [k]
-        r_minus = 0.5*(a_c - sqrt_disc)                  # [k]
-        delta   = r_plus - r_minus                       # [k]
-
-        rp = r_plus.unsqueeze(0)  ** n                   # [T,k]
-        rm = r_minus.unsqueeze(0) ** n                   # [T,k]
-
-        eps = 1e-6
-        near = (torch.abs(delta) < eps)
-        delta_safe = torch.where(near, torch.ones_like(delta), delta)
-
-        # General closed-form kernel g[n] = (r+^n - r-^n) / (r+ - r-)
-        g_full = (rp - rm) / delta_safe.unsqueeze(0)     # [T,k]
-
-        # Double-root fallback: g[n] = n * r^(n-1)
-        if near.any():
-            r = torch.where(near, r_plus, torch.ones_like(r_plus))
-            r_pow_n = r.unsqueeze(0) ** n                # [T,k]
-            fallback = n * r_pow_n / torch.clamp(r, min=1e-12)
-            g_full = torch.where(near.unsqueeze(0), fallback, g_full)
-
-        g_full = g_full.real.to(dtype)                   # [T,k]
-
-        # --- 3) Overlap-add per event (time-shifted impulse responses) ---
-        C = Gy.shape[0]
+        C = prep["Gy"].shape[0]
         y_total = torch.zeros((T, C), device=device, dtype=dtype)
 
-        Nd = int(drivers.numel())
         for t0, f in events.items():
             t0 = int(t0)
             if t0 >= T:
                 continue
-
-            f = torch.as_tensor(f, device=device, dtype=dtype).view(-1)
-            if f.numel() == 3:
-                # broadcast same [fx,fy,fz] to all drivers
-                u0 = f.unsqueeze(0).expand(Nd, 3).reshape(3*Nd)
-            elif f.numel() == 3*Nd:
-                u0 = f
-            else:
-                # ignore malformed force
+            try:
+                u0 = self._build_u0(f, prep["Nd"], device, dtype)        # [3*Nd]
+            except ValueError:
                 continue
-
-            # modal kick at n=1 for this event
-            r0 = alpha * (Gu @ u0)                       # [k]
-
-            # q_event[n] = r0 ⊙ g_full[n]
-            q_event = g_full * r0.unsqueeze(0)           # [T,k] (but we will trim)
-            y_event = q_event @ Gy.T                     # [T,C]
-
-            # time shift (overlap-add)
+            r0 = alpha * (prep["Gu"] @ u0)                               # [k]
+            q  = g_full * r0.unsqueeze(0)                                # [T,k]
+            y  = q @ prep["Gy"].T                                        # [T,C]
             dur = T - t0
             if dur > 0:
-                y_total[t0:T, :] += y_event[:dur, :]
+                y_total[t0:T, :] += y[:dur, :]
 
-        # --- 4) HPF, mix, normalize ---
-        if hp:
-            y_total = self.hp_filter(y_total)
+        return self._finalize_audio(y_total, prep["listener_ids"], layout, pan_method, hp, mix_audio)
 
-        audio = y_total
-        if mix_audio:
-            audio = mix_down(
-                self, audio,
-                layout=layout, method=pan_method,
-                listener_ids=listener_ids,
-                normalize=False, soft_clip=False, energy_comp=True,
+    def render_audio(
+            self,
+            seconds: float,
+            fs: int = 16000,
+            observable: str = "pos",      # kept for signature parity
+            axis: str = "all",
+            listener_ids: Optional[torch.Tensor] = None,
+            layout: str = "stereo",
+            pan_method: str = "by_position",
+            hp: bool = True,
+            gain: float | None = None,
+            events: dict | None = None,
+            exciter=None,
+            mix_audio: bool = True,
+            start_frame: int = 0,
+            n_modes: int = 1024,
+            force_vec: tuple[float,float,float] | None = (3.0, 3.0, 3.0),
+        ) -> torch.Tensor:
+        """
+        Unified, fast, no per-sample loop (diag-Γ):
+        - If `events` provided -> overlap-add of time-shifted impulses.
+        - Else if `force_vec` provided -> single impulse at t=0 with that force.
+        - Else -> defaults to single [3,3,3] impulse (change if undesired).
+        """
+        if events:
+            return self.render_modal_events_diag_overlap_add(
+                seconds=seconds, fs=fs, events=events,
+                listener_ids=listener_ids, drivers=None, axis=axis,
+                n_modes=n_modes, hp=hp, mix_audio=mix_audio,
+                layout=layout, pan_method=pan_method,
             )
-
-        audio = audio.transpose(1, 0)  # [K,T]
-        peak  = torch.maximum(torch.abs(audio).amax(dim=1), torch.tensor(1e-9, device=audio.device)).detach()
-        audio = audio / peak.unsqueeze(-1)
-        return audio.T  # [T,K]
+        # single impulse path
+        fvec = (3.0,3.0,3.0) if force_vec is None else force_vec
+        return self.render_modal_impulse_diag(
+            seconds=seconds, fs=fs, force_vec=fvec,
+            listener_ids=listener_ids, drivers=None, axis=axis,
+            n_modes=n_modes, hp=hp, mix_audio=mix_audio,
+            layout=layout, pan_method=pan_method,
+            start_frame=start_frame,
+        )
 
 
 
@@ -628,7 +429,7 @@ if __name__ == "__main__":
     model.train()  # enable grads
 
     # # Render 1s of audio and backprop a simple power loss
-    seconds = 1.0
+    seconds = 6.0
     events = load_event_from_json("events/two_hits.json")
     events = event_dict_seconds_to_samples(events, fs)
 
@@ -662,7 +463,7 @@ if __name__ == "__main__":
     # )
 
     audio = model.render_modal_events_diag_overlap_add(
-        seconds=1.0,
+        seconds=seconds,
         fs=fs,
         events=events,
         listener_ids=model.get_listener_ids(),
