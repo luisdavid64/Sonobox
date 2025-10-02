@@ -4,6 +4,7 @@ from tqdm import tqdm
 from util.audio_helpers import clap_preprocess
 from util.util import event_dict_seconds_to_samples, load_event_from_json, scale_dict_samples
 from diff_mass_spring_model import MassSpringModel
+from modal_mass_spring_model import ModalMassSpringModel
 import torch
 import numpy as np
 from audiotools import AudioSignal
@@ -82,7 +83,7 @@ def clip_directional_loss(
 
 def text2mi(
     model_name: str,
-    mass_spring_model: MassSpringModel,
+    mass_spring_model: Union[MassSpringModel, ModalMassSpringModel],
     text: Union[str, List[str]],   
     device: str = "cuda" if torch.cuda.is_available() else "cpu", 
     log_audio_every_n: int = 1, 
