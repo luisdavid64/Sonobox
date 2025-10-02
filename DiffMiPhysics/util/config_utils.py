@@ -43,6 +43,8 @@ def model_to_config(model) -> dict:
         "M": float_or_list(torch.mean(1/model.inv_mass).item()),
         "K": float_or_list(torch.mean(model.k).item()),
         "C": float_or_list(torch.mean(model.z).item()),
+        "K1": float_or_list(torch.mean(model.k1).item()) if hasattr(model, 'k1') else None,
+        "K2": float_or_list(torch.mean(model.k2).item()) if hasattr(model, 'k2') else None
     }
     sonification_set_up = {
         "drivers": [mass_name(*idx) for idx in tensor_to_list(model.drivers)],
