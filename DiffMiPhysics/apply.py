@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Union, List, Optional, Tuple
-from diff_mass_spring_model import MassSpringModel
+from diff_mass_spring_model import MassSpringModel 
+from modal_mass_spring_model import ModalMassSpringModel
 import torch
 
 from audiotools import AudioSignal
@@ -36,7 +37,8 @@ def main(model_config_path: Union[str, Path],
          n_iters: int = 600,
          criterion: str = 'cosine-sim',
          model: str = 'ms_clap',
-         detailed_log:bool = False) -> Tuple[AudioSignal, torch.Tensor, dict]:
+         detailed_log:bool = False,
+         use_explicit: bool = False) -> Tuple[AudioSignal, torch.Tensor, dict]:
 
     # Preprocess full audio from path, return AudioSignal
     print("DEVICE:", DEVICE)
@@ -44,12 +46,19 @@ def main(model_config_path: Union[str, Path],
 
     # Create mass_spring_model 
     fs = 16000
-    mass_spring_model = MassSpringModel.from_json(
-        model_config_path,
-        device=DEVICE, dt=1/fs
-    ).to(DEVICE)
+    if use_explicit:
+        mass_spring_model = MassSpringModel.from_json(
+            model_config_path,
+            device=DEVICE, dt=1/fs
+        ).to(DEVICE)
+    else:
+        mass_spring_model = ModalMassSpringModel.from_json(
+            model_config_path,
+            device=DEVICE, dt=1/fs
+        ).to(DEVICE)
     mass_spring_model.train()  # enable grads
     print(f'2. created mass_spring_model from {model_config_path}')
+    print(f"Using {'Verlet Integration' if use_explicit else 'Additive Modal'}")
 
     # Apply text-to-FX processng
     print(f'3. applying text2mi on mass_spring_model ..., target: {text_target}')
@@ -98,7 +107,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process an audio file with a given FX chain to match a description.")
 
     parser.add_argument("--model_config_path", default="../model_configs/sonobox_data/baselines/biosonix_3D.json", type=str, help="Path to the model config file.")
-    parser.add_argument("--text_target", type=str, default='bongo drums', help="Text description to match.")
+    parser.add_argument("--text_target", type=str, default='bongo drum', help="Text description to match.")
     parser.add_argument("--export_dir", type=str, default="exp", help="Dir Path to save optimized audio file.")
     parser.add_argument("--learning_rate", type=float, default=0.5, help="Learning rate for optimization.")
     parser.add_argument("--params_init_type", type=str, default='random', choices=['random', 'default'], help="Parameter initialization type.")
@@ -106,6 +115,7 @@ if __name__ == "__main__":
     parser.add_argument("--criterion", type=str, default='cosine-sim', help="Optimization criterion.")
     parser.add_argument("--model", type=str, default='ms_clap', help="Model name.")
     parser.add_argument("--detailed_log", action="store_true", help="Enable detailed logging every 100 iterations.")
+    parser.add_argument("--use_explicit", action="store_true", help="Use Explicit verlet integration instead of additive modal")
 
 
     args = parser.parse_args()
@@ -118,4 +128,5 @@ if __name__ == "__main__":
          args.n_iters, 
          args.criterion, 
          args.model,
-         args.detailed_log)
+         args.detailed_log,
+         args.use_explicit)
