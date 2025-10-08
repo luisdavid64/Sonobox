@@ -206,6 +206,7 @@ class ModalMassSpringModel(MassSpringModel):
         drivers      = self.get_driver_ids()   if drivers      is None else drivers
 
         Kf, Zf, idx_free = self._assemble_KZ_dense()
+        Kf = Kf + 1e-6 * torch.eye(Kf.shape[0], device=Kf.device, dtype=Kf.dtype)
         # cache the large-subspace U0; we will re-diagonalize in that subspace
         self._compute_disc_modes(Kf, Zf, idx_free, drivers, listener_ids, axis, n_modes, diag_gamma=True)
 
