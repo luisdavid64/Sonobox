@@ -433,35 +433,6 @@ if __name__ == "__main__":
     events = load_event_from_json("events/two_hits.json")
     events = event_dict_seconds_to_samples(events, fs)
 
-    # audio = model.render_modal_audio(
-    #     seconds=1.0,
-    #     fs=fs,
-    #     listener_ids=model.get_listener_ids(),
-    #     drivers=model.get_driver_ids(),
-    #     axis='all',          # 'x'|'y'|'z'|'all' (linear; 'all' ≈ your 'all')
-    #     n_modes=1024,         # keep the most audible modes
-    #     hp=True,
-    #     events=events,       # same events dict you already use
-    #     mix_audio=True,
-    #     gamma="diag",
-    #     layout='mono',
-    #     pan_method='by_position',
-    # )
-
-    # audio = model.render_modal_impulse_diag(
-    #     seconds=1.0,
-    #     fs=fs,
-    #     force_vec=(3.0, 3.0, 3.0),
-    #     listener_ids=model.get_listener_ids(),
-    #     drivers=model.get_driver_ids(),
-    #     axis='all',
-    #     n_modes=1024,
-    #     hp=True,
-    #     mix_audio=True,
-    #     layout='mono',
-    #     pan_method='by_position',
-    # )
-
     audio = model.render_modal_events_diag_overlap_add(
         seconds=seconds,
         fs=fs,
