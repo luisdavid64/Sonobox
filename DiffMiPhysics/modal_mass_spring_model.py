@@ -272,7 +272,8 @@ class ModalMassSpringModel(MassSpringModel):
         if near.any():
             r = torch.where(near, r_plus, torch.ones_like(r_plus))
             r_pow_n = r.unsqueeze(0) ** n
-            fallback = n * r_pow_n / torch.clamp(r, min=1e-12)
+            mag_r = torch.abs(r).clamp(min=1e-12)
+            fallback = n * r_pow_n / mag_r
             g_full = torch.where(near.unsqueeze(0), fallback, g_full)
 
         return g_full.real.to(dtype)                    # [T,k]
