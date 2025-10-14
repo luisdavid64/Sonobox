@@ -15,8 +15,9 @@ def plot_model_graph_3d(
     node_opacity=0.95,
     node_color="#1f77b4",
     bg_color="rgba(0,0,0,0)",
-    show_axes=False,
+    show_axes=True,
     title=None,
+    path=None
 ):
     """
     Performant 3D graph plot (WebGL) without NetworkX.
@@ -104,7 +105,10 @@ def plot_model_graph_3d(
         ),
         margin=dict(l=0, r=0, t=30 if title else 0, b=0)
     )
-    fig.write_html("graph3d.html")
+    if path is not None:
+        fig.write_html(path)
+    else:
+        fig.write_html("graph3d.html")
 
 
 ti.init(arch=ti.cpu, log_level=ti.ERROR)

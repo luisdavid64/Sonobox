@@ -18,8 +18,9 @@ import json
 from core import create_save_dir, detensor_dict
 from constants import RUNS_DIR, SAMPLE_RATE, DEVICE
 
+fs = 48000
 alpha = 0.5               # stability margin
-dt = 1/16000               # your physics step
+dt = 1/fs               # your physics step
 omega_max = alpha / dt
 eps = 1e-6
 
@@ -133,14 +134,15 @@ def text2mi(
 
     optimizer = torch.optim.AdamW(mass_spring_model.parameters(), lr=lr)     # the optimizer!
 
+    mass_spring_model.visualize(save_dir / 'model.html')
+
     # events = {
     #     8000: (3, 3, 3),
     #     12000: (3, 3, 5),
     #     # more events...
     # }
-    fs = 16000
-    seconds = 6 if isinstance(mass_spring_model, ModalMassSpringModel) else 1
-    events = load_event_from_json("events/two_hits.json")
+    seconds = 2 if isinstance(mass_spring_model, ModalMassSpringModel) else 1
+    events = load_event_from_json("events/two_hits_z.json")
     events = event_dict_seconds_to_samples(events, fs)
     # events = scale_dict_samples(events, 0.1)  # scale forces down a bit
     init_sig = mass_spring_model.render_audio(
@@ -161,7 +163,7 @@ def text2mi(
         writer.add_audio("effected", init_sig, 0, sample_rate=fs)
     # sig_in.clone().cpu().write(save_dir / 'input.wav')
     if export_audio: #starting audio
-        sf.write(save_dir / f'starting.wav', init_sig.detach().cpu().numpy(), 16000)
+        sf.write(save_dir / f'starting.wav', init_sig.detach().cpu().numpy(), fs)
 
     # Preparing our text target
     sig = AudioSignal(init_sig, sample_rate=fs)
@@ -287,7 +289,7 @@ def text2mi(
 
         if n % log_audio_every_n == 0:
             # Save audio
-            sf.write(save_dir / f'optim_{n}.wav', signal_mi.detach().cpu().numpy(), 16000)
+            sf.write(save_dir / f'optim_{n}.wav', signal_mi.detach().cpu().numpy(), fs)
 
         # detailed logging, log params + signal every 100 iters
         if detailed_log:

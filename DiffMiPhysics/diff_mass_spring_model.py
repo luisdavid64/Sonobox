@@ -7,6 +7,7 @@ from util.audio_helpers import axis_pick_t, mix_down, normalize_rms_to_dbfs
 from util.util import event_dict_seconds_to_samples, load_event_from_json
 from util.config_utils import save_config, model_to_config
 import json
+import numpy as np
 from exciters import *
 
 class MassSpringModel(nn.Module):
@@ -21,7 +22,7 @@ class MassSpringModel(nn.Module):
                  drivers=None, listeners=None, config=None,
                  dimX=None, dimY=None, dimZ=None, dist=None,
                  interactionType="FIRST", bounds=[],
-                 dt: float = 1/44100, friction: float = 0.25, gain=10):
+                 dt: float = 1/44100, friction: float = 0.25, gain=10, driver_ids=None, listener_ids=None):
         super().__init__()
         # ----- topology & meta -----
         self.nodes = nodes              # [N, 8] (x,y,z,mass,radius,fixed,driver,listener)
@@ -92,8 +93,14 @@ class MassSpringModel(nn.Module):
         self.register_buffer("m_frc", torch.zeros(self.N, self.dim, device=nodes.device, dtype=nodes.dtype), persistent=False)
 
         # Driver/listener index caches
-        self._driver_ids = self.get_driver_ids()
-        self._listener_ids = self.get_listener_ids()
+        if driver_ids is not None:
+            self._driver_ids = driver_ids.to(nodes.device)
+        else:
+            self._driver_ids = self.get_driver_ids()
+        if listener_ids is not None:
+            self._listener_ids = listener_ids.to(nodes.device)
+        else:
+            self._listener_ids = self.get_listener_ids()
 
         # Global
         self._u_fric = nn.Parameter(torch.log(torch.tensor(friction, device=self.nodes.device, dtype=self.nodes.dtype)))  # maps to [0,2]
@@ -231,6 +238,9 @@ class MassSpringModel(nn.Module):
     # ---------------- io utilities ----------------
     @classmethod
     def from_config(cls, config: dict, device: Optional[torch.device] = None, dt: float = 1/16000):
+        import os
+        import torch
+
         def parse_mass_name(name):
             p = name.split("_")
             if len(p) != 4 or p[0] != "m":
@@ -238,39 +248,83 @@ class MassSpringModel(nn.Module):
             return tuple(int(x) for x in p[1:])
 
         geom = config["geometry"]
+        bounds = config.get("bounds", [])
+        friction = config.get("global_friction", 0.25)
+        interactionType = str(geom.get("interactionType", "FIRST"))
+
+        # check if geometry source file exists (custom mesh/pt geometry)
+        source_path = geom.get("source", None)
+        if source_path is not None and os.path.exists(source_path):
+            print(f"[MassSpringModel] Loading geometry from '{source_path}'...")
+
+            if source_path.endswith(".pt"):
+                data = torch.load(source_path, map_location=device)
+                nodes = data["nodes"].to(device)
+                edge_index = data["edge_index"].to(device)
+                springs = data["springs"].to(device)
+
+            elif source_path.endswith(".npz"):
+                npz = np.load(source_path)
+                nodes = torch.from_numpy(npz["nodes"]).to(device)
+                edge_index = torch.from_numpy(npz["edge_index"]).long().to(device)
+                springs = torch.from_numpy(npz["springs"]).to(device)
+
+            else:
+                raise ValueError(f"Unsupported geometry format: {source_path}")
+
+            # drivers/listeners same as before
+            driver_ids = config.get("sonification_set_up", {}).get("drivers_ids", [])
+            listener_ids = config.get("sonification_set_up", {}).get("listeners_ids", [])
+            driver_ids = torch.tensor(driver_ids, device=device, dtype=torch.long) if len(driver_ids) > 0 else None
+            listener_ids = torch.tensor(listener_ids, device=device, dtype=torch.long) if len(listener_ids) > 0 else None
+            print("Drivers:", driver_ids)
+            print("Listeners:", listener_ids)
+
+            return cls(nodes, edge_index, springs, None, None, config,
+                    dimX=None, dimY=None, dimZ=None, dist=None,
+                    interactionType=interactionType, bounds=bounds,
+                    dt=dt, friction=friction, driver_ids=driver_ids, listener_ids=listener_ids)
+        # -------------------------------------------------------------------------
+        # Fallback: regular procedural grid build
+        # -------------------------------------------------------------------------
         dimX, dimY, dimZ = geom["dx"], geom["dy"], geom["dz"]
         dist = float(geom["distance"])
         mass_radius = float(geom["massesRadius"])
         mass = float(config.get("parameters", {}).get("M", [1.0])[0])
-        # check if parameters/K1 exists, otherwise fallback to K
+
+        # handle K/K1/K2
         stiffness_1 = None
         stiffness_2 = None
-        if "K1" in config.get("parameters", {}) and "K2" in config.get("parameters", {}):
-            stiffness_1 = float(config.get("parameters", {}).get("K1", [1e-3])[0])
-            stiffness_2 = float(config.get("parameters", {}).get("K2", [1e-3])[0])
+        params = config.get("parameters", {})
+        if "K1" in params and "K2" in params:
+            stiffness_1 = float(params.get("K1", [1e-3])[0])
+            stiffness_2 = float(params.get("K2", [1e-3])[0])
         else:
-            stiffness_1 = float(config.get("parameters", {}).get("K", [1e-3])[0])
+            stiffness_1 = float(params.get("K", [1e-3])[0])
             stiffness_2 = stiffness_1
-        edge_damp = float(config.get("parameters", {}).get("C", [0.0])[0])
-        interactionType = str(geom.get("interactionType", "FIRST"))
+
+        edge_damp = float(params.get("C", [0.0])[0])
+
         drivers = torch.tensor([parse_mass_name(n) for n in config.get("sonification_set_up", {}).get("drivers", [])],
-                               device=device) if "sonification_set_up" in config else None
+                            device=device) if "sonification_set_up" in config else None
         listeners = torch.tensor([parse_mass_name(n) for n in config.get("sonification_set_up", {}).get("listeners", [])],
-                                 device=device) if "sonification_set_up" in config else None
-        bounds = config.get("bounds", [])
-        friction = config.get("global_friction", 0.25)
+                                device=device) if "sonification_set_up" in config else None
 
         nodes = build_grid_nodes(dimX, dimY, dimZ, dist,
-                                 mass=mass, radius=mass_radius,
-                                 drivers=drivers, listeners=listeners,
-                                 bounds=bounds, device=device)
+                                mass=mass, radius=mass_radius,
+                                drivers=drivers, listeners=listeners,
+                                bounds=bounds, device=device)
         edge_index, springs = build_edges_by_type(dimX, dimY, dimZ, dist,
-                                                  stiffness_1=stiffness_1, stiffness_2=stiffness_2, damping=edge_damp,
-                                                  interaction_type=interactionType, device=device)
-        return cls(nodes, edge_index, springs, drivers, listeners, config,
-                   dimX=dimX, dimY=dimY, dimZ=dimZ, dist=dist,
-                   interactionType=interactionType, bounds=bounds, dt=dt, friction=friction)
+                                                stiffness_1=stiffness_1, stiffness_2=stiffness_2,
+                                                damping=edge_damp, interaction_type=interactionType,
+                                                device=device)
 
+        return cls(nodes, edge_index, springs, drivers, listeners, config,
+                dimX=dimX, dimY=dimY, dimZ=dimZ, dist=dist,
+                interactionType=interactionType, bounds=bounds,
+                dt=dt, friction=friction)
+
+ 
     def to_config(self):
         return model_to_config(self)
 
@@ -307,8 +361,8 @@ class MassSpringModel(nn.Module):
     # ---------------- visualization ----------------
     """TODO: Implement dynamic visualization and interaction"""
 
-    def visualize(self):
-        plot_model_graph_3d(self)
+    def visualize(self, path=None):
+        plot_model_graph_3d(self, path=path)
 
     #---------------- audio ----------------
 
@@ -426,7 +480,7 @@ class MassSpringModel(nn.Module):
             gain = self.gain
         
         if listener_ids is None:
-            ids = self.get_driver_ids()
+            ids = self._driver_ids
             if ids is None or ids.numel() == 0:
                 ids = torch.tensor([self.N // 2], device=device, dtype=torch.long)
             listener_ids = ids

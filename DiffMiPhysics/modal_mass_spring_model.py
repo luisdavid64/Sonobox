@@ -12,12 +12,13 @@ class ModalMassSpringModel(MassSpringModel):
                  drivers=None, listeners=None, config=None,
                  dimX=None, dimY=None, dimZ=None, dist=None,
                  interactionType="FIRST", bounds=[],
-                 dt: float = 1/44100, friction: float = 0.25, gain=10):
+                 dt: float = 1/44100, friction: float = 0.25, gain=10, driver_ids=None, listener_ids=None):
         super().__init__(nodes, edge_index, springs,
                          drivers=drivers, listeners=listeners, config=config,
                          dimX=dimX, dimY=dimY, dimZ=dimZ, dist=dist,
                          interactionType=interactionType, bounds=bounds,
-                         dt=dt, friction=friction, gain=gain)
+                         dt=dt, friction=friction, gain=gain,
+                         driver_ids=driver_ids, listener_ids=listener_ids)
 
     def _free_dof_index(self):
         # 1 for free dofs, 0 for fixed
@@ -202,8 +203,8 @@ class ModalMassSpringModel(MassSpringModel):
     def _prep_modal_diag(self, listener_ids, drivers, axis, n_modes):
         """Build reduced modal model with diagonal Γ; return a small dict of tensors."""
         device, dtype = self.nodes.device, self.nodes.dtype
-        listener_ids = self.get_listener_ids() if listener_ids is None else listener_ids
-        drivers      = self.get_driver_ids()   if drivers      is None else drivers
+        listener_ids = self._listener_ids if listener_ids is None else listener_ids
+        drivers      = self._driver_ids  if drivers      is None else drivers
 
         Kf, Zf, idx_free = self._assemble_KZ_dense()
         Kf = Kf + 1e-6 * torch.eye(Kf.shape[0], device=Kf.device, dtype=Kf.dtype)
@@ -257,7 +258,13 @@ class ModalMassSpringModel(MassSpringModel):
         n = torch.arange(T, device=device, dtype=dtype).view(T, 1)  # [T,1]
         a_c = a.to(torch.complex64); b_c = b.to(torch.complex64)
         disc = a_c*a_c + 4.0*b_c
-        sqrt_disc = torch.sqrt(disc)
+        disc = (a.to(torch.complex64) * a.to(torch.complex64)) + 4.0 * b.to(torch.complex64)
+
+        # sqrt_disc = torch.sqrt(disc)
+        eps = torch.finfo(dtype).eps
+
+        sqrt_disc = torch.sqrt(disc + eps)  # force complex sqrt
+
         r_plus  = 0.5*(a_c + sqrt_disc)                 # [k]
         r_minus = 0.5*(a_c - sqrt_disc)                 # [k]
         delta   = r_plus - r_minus                      # [k]
@@ -421,26 +428,27 @@ class ModalMassSpringModel(MassSpringModel):
 
 
 if __name__ == "__main__":
-    fs = 16000
+    fs = 48000
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = ModalMassSpringModel.from_json(
-        "../model_configs/sonobox_data/baselines/biosonix_3D.json",
-        device=device, dt=1/fs
-    )
+    # model = ModalMassSpringModel.from_json(
+    #     "../model_configs/sonobox_data/baselines/biosonix_3D.json",
+    #     device=device, dt=1/fs
+    # )
+    model = ModalMassSpringModel.from_json("/Users/luisreyes/Sonify/SonoBox/model_configs/sonobox_data/baselines/plate.json")
     model.train()  # enable grads
 
     # # Render 1s of audio and backprop a simple power loss
     seconds = 6.0
-    events = load_event_from_json("events/two_hits.json")
+    events = load_event_from_json("events/two_hits_z.json")
     events = event_dict_seconds_to_samples(events, fs)
 
     audio = model.render_modal_events_diag_overlap_add(
         seconds=seconds,
         fs=fs,
         events=events,
-        listener_ids=model.get_listener_ids(),
-        drivers=model.get_driver_ids(),
+        listener_ids=model._listener_ids,
+        drivers=model._driver_ids,
         axis='all',
         n_modes=1024,
         hp=True,
