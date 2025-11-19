@@ -164,7 +164,7 @@ void resetConfig() {
   var cfgBuilder = Phy3DConfig.fromProcessingJsonFile(Paths.get(absPath));
   config = cfgBuilder.build();
   phys = new PhysicsContext(44100);
-  phys.setGlobalFriction(friction);
+  phys.setGlobalFriction(config.globalFriction);
 }
 
 // Alias
