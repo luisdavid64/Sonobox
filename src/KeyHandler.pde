@@ -15,13 +15,19 @@ import java.util.ArrayList;
 void keyPressed() {
   if (Character.isDigit(key)) {
     int index = Character.getNumericValue(key) - 1;
+    if (upPressed) {
+      index += 10;
+    }
+    if (downPressed) {
+      index += 20;
+    }
     if (index >= 0 && index < drivers.size()) {
       float f = 3.0;
       Driver3D driver = drivers.get(index);
       driver.applyFrc(f, f, f);
       // driver.releaseADSR();
       // driver.triggerADSR(f,f,f);
-      println("PLAYING driver[" + index + "] -> " + driver.getName());
+      println("PLAYING driver[" + index + "] -> " + driver.getMat().getName());
     }
   }
   if (key == 'i') {

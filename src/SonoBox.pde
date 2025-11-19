@@ -44,7 +44,7 @@ phy3DModel model;
 ModelController controller;
 
 // physical parameters
-float friction = 0.25;
+float friction = 0.025;
 float gain = 10;
 
 // generic model creation
