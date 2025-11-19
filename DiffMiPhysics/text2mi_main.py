@@ -141,7 +141,7 @@ def text2mi(
     #     12000: (3, 3, 5),
     #     # more events...
     # }
-    seconds = 2 if isinstance(mass_spring_model, ModalMassSpringModel) else 1
+    seconds = 4 if isinstance(mass_spring_model, ModalMassSpringModel) else 1
     events = load_event_from_json("events/two_hits_z.json")
     events = event_dict_seconds_to_samples(events, fs)
     # events = scale_dict_samples(events, 0.1)  # scale forces down a bit
